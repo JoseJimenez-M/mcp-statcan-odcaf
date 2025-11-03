@@ -4,10 +4,23 @@ import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 from sse_starlette.sse import EventSourceResponse
+from fastapi.middleware.cors import CORSMiddleware
+
 
 from database import get_schema_tool, query_facilities_tool
 
 app = FastAPI()
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://chat.openai.com"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
+
+
 
 TOOL_DEFINITIONS = [
     {
