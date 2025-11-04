@@ -11,12 +11,13 @@ from database import get_schema_tool, query_facilities_tool
 
 app = FastAPI()
 
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://chat.openai.com"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"], 
+    allow_headers=["*"],
 )
 
 TOOL_DEFINITIONS = [
@@ -50,7 +51,6 @@ async def mcp_event_generator(request: Request):
         "event": "mcp.transport.session_created",
         "data": {"session_id": session_id}
     })
-
 
     try:
         body = await request.json()
@@ -100,26 +100,22 @@ async def mcp_event_generator(request: Request):
             "data": response_data
         })
 
+    except json.JSONDecodeError:
+        print("Empty body received. Connection established. Awaiting events...")
+        pass
+
     except asyncio.CancelledError:
         print("Client disconnected.")
         raise
+
     except Exception as e:
-        print(f"An error occurred (likely empty initial POST): {e}")
+        print(f"An error occurred in stream: {e}")
         yield json.dumps({
             "event": "mcp.error",
             "data": {"code": "internal_server_error", "message": str(e)}
         })
     finally:
-        print("MCP stream generator finished.")
-
-
-@app.options("/sse")
-async def options_sse():
-    return Response(status_code=200, headers={
-        "Access-Control-Allow-Origin": "https://chat.openai.com",
-        "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-        "Access-Control-Allow-Headers": "*"
-    })
+        print("MCP stream generator finished or holding open.")
 
 
 @app.post("/sse")
