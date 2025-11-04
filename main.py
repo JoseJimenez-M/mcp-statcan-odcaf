@@ -1,9 +1,16 @@
 import json
+
+import app
 import uvicorn
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import search_tool, fetch_tool, get_schema_tool, query_facilities_tool
+from fastapi.responses import FileResponse
+
+@app.get("/.well-known/ai-plugin.json")
+async def serve_ai_plugin():
+    return FileResponse(".well-known/ai-plugin.json", media_type="application/json")
 
 app = FastAPI()
 
