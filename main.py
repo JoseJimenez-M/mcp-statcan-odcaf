@@ -47,123 +47,69 @@ TOOL_DEFINITIONS = [
 
 async def mcp_event_generator(request: Request):
     print("\n--- [LOG] NEW CONNECTION RECEIVED ---")
-    session_id = "mcp_session_1"
 
-    print("[LOG] Sending mcp.transport.session_created...")
-    yield json.dumps({
-        "event": "mcp.transport.session_created",
-        "data": {"session_id": session_id}
-    })
+    try:
+        body = await request.json()
+        print(f"[LOG] JSON Body parsed: {body}")
 
-    content_length = request.headers.get('content-length')
-    print(f"[LOG] Content-Length header: {content_length}")
+        event_id = body.get("id", "mcp_event_1")
+        method = body.get("method")
+        is_json_rpc = body.get("jsonrpc") == "2.0"
 
+        if not is_json_rpc:
+            yield json.dumps({"error": "Invalid JSON-RPC format"})
+            return
 
-    event_id = "mcp_event_unknown"
+        # 1️⃣ initialize
+        if method == "initialize":
+            print("[LOG] Handling initialize")
+            result = {
+                "protocolVersion": "2025-03-26",
+                "serverInfo": {"name": "ODCAF MCP Server", "version": "1.0.0"},
+                "capabilities": {"tools": {}}
+            }
+            yield json.dumps({"jsonrpc": "2.0", "id": event_id, "result": result})
 
-    if content_length is not None and int(content_length) > 0:
-        try:
-            body = await request.json()
-            print(f"[LOG] JSON Body parsed: {body}")
+        # 2️⃣ list tools
+        elif method in ["mcp.tool.list_tools.invoke", "tools/list"]:
+            print("[LOG] Handling list_tools")
+            result = {"tools": TOOL_DEFINITIONS}
+            yield json.dumps({"jsonrpc": "2.0", "id": event_id, "result": result})
 
-            event_id = body.get("id", "mcp_event_1")
-            is_json_rpc = body.get("jsonrpc") == "2.0"
-            event_type = body.get("event")
-            method_type = body.get("method")
+        # 3️⃣ invoke tool
+        elif method == "mcp.tool.invoke":
+            print("[LOG] Handling tool invoke")
+            params = body.get("params", {})
+            tool_id = params.get("tool_name")
+            args = params.get("parameters", {})
 
-            response_payload = None
-            has_error = False
-
-            if is_json_rpc:
-
-
-                if method_type == "initialize":
-                    print("[LOG] JSON-RPC: Handling 'initialize'.")
-
-                    client_protocol_version = body.get("params", {}).get("protocolVersion", "2025-03-26")
-                    print(f"[LOG] Client requested protocol version: {client_protocol_version}")
-
-                    response_payload = {
-                        "protocolVersion": client_protocol_version,
-                        "serverInfo": {
-                            "name": "Servidor ODCAF (Estadísticas Canadá)",
-                            "version": "1.0.0"
-                        },
-                        "capabilities": {
-                            "tools": {}
-                        }
-                    }
-                    print(f"[LOG] JSON-RPC: Sending RESULT for initialize")
-                    yield json.dumps({
-                        "jsonrpc": "2.0",
-                        "id": event_id,
-                        "result": response_payload
-                    })
-
-
-                elif method_type == "mcp.tool.list_tools.invoke" or method_type == "tools/list":
-                    print("[LOG] JSON-RPC: Handling 'mcp.tool.list_tools.invoke' (or 'tools/list').")
-                    response_payload = {"tools": TOOL_DEFINITIONS}
-                    print(f"[LOG] JSON-RPC: Sending RESULT for list_tools")
-                    yield json.dumps({
-                        "jsonrpc": "2.0",
-                        "id": event_id,
-                        "result": response_payload
-                    })
-
-
-                elif method_type == "mcp.tool.invoke":
-                    tool_id = body.get("params", {}).get("tool_name")
-                    params = body.get("params", {}).get("parameters", {})
-                    print(f"[LOG] JSON-RPC: Handling mcp.tool.invoke for {tool_id}")
-
-                    if tool_id == "search":
-                        query = params.get("query", "")
-                        limit = params.get("limit", 5)
-                        response_payload = await search_tool(query, limit)
-                    elif tool_id == "fetch":
-                        facility_id = params.get("id", "")
-                        response_payload = await fetch_tool(facility_id)
-                    else:
-                        response_payload = {"code": -32002, "message": f"Unknown tool_id: {tool_id}"}
-                        has_error = True
-
-                    if isinstance(response_payload, dict) and 'error' in response_payload and not has_error:
-                        response_payload = {"code": -32000, "message": response_payload['error']}
-                        has_error = True
-
-                    if has_error:
-                        print(f"[LOG] JSON-RPC: Sending ERROR response: {response_payload}")
-                        yield json.dumps({
-                            "jsonrpc": "2.0",
-                            "id": event_id,
-                            "error": response_payload
-                        })
-                    else:
-                        print(f"[LOG] JSON-RPC: Sending RESULT response for method {method_type}")
-                        yield json.dumps({
-                            "jsonrpc": "2.0",
-                            "id": event_id,
-                            "result": response_payload
-                        })
-
-            elif event_type:
-
-                pass # (Abreviado por claridad)
-
+            if tool_id == "search":
+                result = await search_tool(args.get("query", ""), args.get("limit", 5))
+            elif tool_id == "fetch":
+                result = await fetch_tool(args.get("id", ""))
             else:
-                print(f"[LOG] Unknown protocol: {body}")
+                result = {"error": f"Unknown tool {tool_id}"}
 
-        except Exception as e:
-            print(f"!!! [ERROR] Error processing JSON body: {e}")
-            
-            yield json.dumps({"jsonrpc": "2.0", "id": event_id, "error": {"code": -32000, "message": str(e)}})
+            yield json.dumps({"jsonrpc": "2.0", "id": event_id, "result": result})
 
-    else:
-        print("[LOG] Empty POST or GET received. Connection established.")
+        else:
+            print(f"[LOG] Unknown method: {method}")
+            yield json.dumps({
+                "jsonrpc": "2.0",
+                "id": event_id,
+                "error": {"code": -32601, "message": f"Unknown method: {method}"}
+            })
 
+    except Exception as e:
+        print(f"[ERROR] {e}")
+        yield json.dumps({
+            "jsonrpc": "2.0",
+            "id": "mcp_error",
+            "error": {"code": -32000, "message": str(e)}
+        })
 
     print("--- [LOG] Request handled. Closing connection. ---")
+
 
 
 @app.post("/sse")
