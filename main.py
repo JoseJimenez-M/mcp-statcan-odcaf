@@ -5,12 +5,15 @@ from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse, Response
 from sse_starlette.sse import EventSourceResponse
 
+# --- 1. Importar el Middleware de CORS ---
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import get_schema_tool, query_facilities_tool
 
 app = FastAPI()
 
+# --- 2. Configurar CORS (Maneja OPTIONS) ---
+# Esto es requerido por el navegador de ChatGPT
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://chat.openai.com"],
@@ -43,25 +46,32 @@ TOOL_DEFINITIONS = [
 ]
 
 
+# --- 3. Lógica del Generador Mejorada (Maneja POST Vacío) ---
 async def mcp_event_generator(request: Request):
     session_id = "mcp_session_1"
 
+    # Enviar el evento de sesión creada
     yield json.dumps({
         "event": "mcp.transport.session_created",
         "data": {"session_id": session_id}
     })
 
+    # Verificar si el cliente envió un cuerpo o si fue solo una conexión vacía
     content_length = request.headers.get('content-length')
 
     if content_length is None or content_length == '0':
+        # Cuerpo vacío (la conexión inicial de ChatGPT).
+        # Mantener la conexión abierta.
         print("Empty POST received. Connection established. Holding open.")
         try:
             while True:
+                # Mantener vivo mientras el cliente esté conectado
                 await asyncio.sleep(60)
         except asyncio.CancelledError:
             print("Client disconnected (empty connection).")
-        return
+        return  # Terminar el generador aquí
 
+    # Si SÍ hay un cuerpo (como tu prueba de curl), procesarlo.
     try:
         body = await request.json()
 
@@ -114,7 +124,8 @@ async def mcp_event_generator(request: Request):
 
 @app.post("/sse")
 async def sse_endpoint(request: Request):
-    return EventSourceResponse(mcp_event_generator(request), media_type="text/event-stream")
+    return EventSourceResponse(mcp_event_generator(request),
+                               media_type="text/stream")  # Corregido a 'text/event-stream'
 
 
 @app.get("/")
