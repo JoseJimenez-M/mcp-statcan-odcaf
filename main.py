@@ -1,6 +1,5 @@
 import json
 
-import app
 import uvicorn
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
