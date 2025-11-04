@@ -43,11 +43,12 @@ TOOL_DEFINITIONS = [
 ]
 
 
-# --- 2. Lógica del Generador Mejorada ---
+# --- 2. Lógica del Generador Mejorada (Bilingüe) ---
 async def mcp_event_generator(request: Request):
     print("\n--- [LOG] NEW CONNECTION RECEIVED ---")
     session_id = "mcp_session_1"
 
+    # Todos los clientes reciben esto primero (es estándar de SSE)
     print("[LOG] Sending mcp.transport.session_created...")
     yield json.dumps({
         "event": "mcp.transport.session_created",
@@ -58,66 +59,85 @@ async def mcp_event_generator(request: Request):
     print(f"[LOG] Content-Length header: {content_length}")
 
     if content_length is not None and int(content_length) > 0:
-        # --- Este bloque SÍ se ejecutará ahora ---
         try:
             body = await request.json()
             print(f"[LOG] JSON Body parsed: {body}")
 
             event_id = body.get("id", "mcp_event_1")
+            is_json_rpc = body.get("jsonrpc") == "2.0"
             event_type = body.get("event")
             method_type = body.get("method")
 
-            response_data = None
-            response_event = None
+            response_payload = None  # Esto será 'data' o 'result'
+            response_event_name = None  # Para MCP
 
-            if method_type == "initialize" or event_type == "mcp.tool.list_tools.invoke":
-                print(f"[LOG] Handling '{method_type or event_type}'. Sending tool list.")
-                response_event = "mcp.tool.list_tools.result"
-                response_data = {"tools": TOOL_DEFINITIONS}
+            # --- LÓGICA PARA JSON-RPC (ChatGPT) ---
+            if is_json_rpc:
 
-            elif event_type == "mcp.tool.invoke" or method_type == "mcp.tool.invoke":
+                if method_type == "initialize":
+                    print("[LOG] JSON-RPC: Handling 'initialize'.")
+                    response_payload = {"tools": TOOL_DEFINITIONS}
 
-                params = {}
-                tool_id = None
-
-                if event_type == "mcp.tool.invoke":
-                    tool_id = body.get("data", {}).get("tool_id")
-                    params = body.get("data", {}).get("parameters", {})
                 elif method_type == "mcp.tool.invoke":
                     tool_id = body.get("params", {}).get("tool_id")
                     params = body.get("params", {}).get("parameters", {})
+                    print(f"[LOG] JSON-RPC: Handling mcp.tool.invoke for {tool_id}")
 
-                print(f"[LOG] Handling mcp.tool.invoke for tool_id: {tool_id}")
-
-                response_event = "mcp.tool.invoke.result"
-                result_data = None
-
-                if tool_id == "get_schema":
-                    result_data = await get_schema_tool()
-                elif tool_id == "query_facilities":
-                    if not params.get("province") and not params.get("city") and not params.get("facility_type"):
-                        result_data = {
-                            "error": "Your filter is too broad; try adding province, city, or facility_type."}
+                    if tool_id == "get_schema":
+                        response_payload = await get_schema_tool()
+                    elif tool_id == "query_facilities":
+                        if not params.get("province") and not params.get("city") and not params.get("facility_type"):
+                            response_payload = {
+                                "error": "Your filter is too broad; try adding province, city, or facility_type."}
+                        else:
+                            response_payload = await query_facilities_tool(**params)
                     else:
-                        result_data = await query_facilities_tool(**params)
-                else:
-                    result_data = {"error": f"Unknown tool_id: {tool_id}"}
+                        response_payload = {"error": f"Unknown tool_id: {tool_id}"}
 
-                response_data = {"tool_id": tool_id, "result": result_data}
+                # Enviar la respuesta en formato JSON-RPC
+                print(f"[LOG] JSON-RPC: Sending result for method {method_type}")
+                yield json.dumps({
+                    "jsonrpc": "2.0",
+                    "id": event_id,  # Responder con el mismo ID
+                    "result": response_payload
+                })
+
+            # --- LÓGICA PARA MCP (tu prueba de curl) ---
+            elif event_type:
+                if event_type == "mcp.tool.list_tools.invoke":
+                    print("[LOG] MCP: Handling mcp.tool.list_tools.invoke")
+                    response_event_name = "mcp.tool.list_tools.result"
+                    response_payload = {"tools": TOOL_DEFINITIONS}
+
+                elif event_type == "mcp.tool.invoke":
+                    tool_id = body.get("data", {}).get("tool_id")
+                    params = body.get("data", {}).get("parameters", {})
+                    print(f"[LOG] MCP: Handling mcp.tool.invoke for {tool_id}")
+
+                    result_data = None
+                    if tool_id == "get_schema":
+                        result_data = await get_schema_tool()
+                    elif tool_id == "query_facilities":
+                        if not params.get("province") and not params.get("city") and not params.get("facility_type"):
+                            result_data = {
+                                "error": "Your filter is too broad; try adding province, city, or facility_type."}
+                        else:
+                            result_data = await query_facilities_tool(**params)
+                    else:
+                        result_data = {"error": f"Unknown tool_id: {tool_id}"}
+                    response_payload = {"tool_id": tool_id, "result": result_data}
+                    response_event_name = "mcp.tool.invoke.result"
+
+                # Enviar la respuesta en formato MCP
+                print(f"[LOG] MCP: Sending response event: {response_event_name}")
+                yield json.dumps({
+                    "id": f"resp_for_{event_id}",
+                    "event": response_event_name,
+                    "data": response_payload
+                })
 
             else:
-                print(f"[LOG] Unknown event/method: {event_type} / {method_type}")
-                response_event = "mcp.error"
-                response_data = {"code": "unknown_event",
-                                 "message": f"Unknown event/method: {event_type} / {method_type}"}
-
-            print(f"[LOG] Sending response event: {response_event}")
-            yield json.dumps({
-                "id": f"resp_for_{event_id}",
-                "event": response_event,
-                "data": response_data
-            })
-            print("[LOG] JSON body processed.")
+                print(f"[LOG] Unknown protocol: {body}")
 
         except Exception as e:
             print(f"!!! [ERROR] Error processing JSON body: {e}")
@@ -129,8 +149,6 @@ async def mcp_event_generator(request: Request):
     else:
         print("[LOG] Empty POST received. Connection established.")
 
-    # --- ¡LA SOLUCIÓN! Este bucle AHORA ESTÁ AL FINAL ---
-    # Mantiene la conexión abierta después de procesar el JSON (o si estaba vacío)
     print("[LOG] Entering keep-alive loop...")
     try:
         while True:
