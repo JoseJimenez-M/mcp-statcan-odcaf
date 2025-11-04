@@ -92,8 +92,6 @@ async def mcp_event_generator(request: Request):
                         "result": response_payload
                     })
 
-                    # --- ¡ERROR ELIMINADO! Ya no enviamos la lista proactivamente ---
-
                 # --- ¡NUEVO! Manejar la solicitud 'list_tools' ---
                 elif method_type == "mcp.tool.list_tools.invoke":
                     print("[LOG] JSON-RPC: Handling 'mcp.tool.list_tools.invoke'.")
@@ -143,7 +141,6 @@ async def mcp_event_generator(request: Request):
 
             # --- LÓGICA PARA MCP (tu prueba de curl) ---
             elif event_type:
-                # ... (Tu código de prueba 'curl' sigue funcionando aquí) ...
                 response_event_name = None
                 if event_type == "mcp.tool.list_tools.invoke":
                     print("[LOG] MCP: Handling mcp.tool.list_tools.invoke")
@@ -153,7 +150,6 @@ async def mcp_event_generator(request: Request):
                     tool_id = body.get("data", {}).get("tool_id")
                     params = body.get("data", {}).get("parameters", {})
 
-                    # (Tus herramientas de prueba antiguas)
                     if tool_id == "get_schema":
                         result_data = await get_schema_tool()
                     elif tool_id == "query_facilities":
@@ -201,5 +197,5 @@ def root():
     return {"message": "MCP Server is running. Use the /sse endpoint."}
 
 
-if name == "main":
+if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
