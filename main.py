@@ -43,6 +43,7 @@ TOOL_DEFINITIONS = [
 ]
 
 
+# --- 2. Lógica del Generador Mejorada ---
 async def mcp_event_generator(request: Request):
     print("\n--- [LOG] NEW CONNECTION RECEIVED ---")
     session_id = "mcp_session_1"
@@ -57,51 +58,50 @@ async def mcp_event_generator(request: Request):
     print(f"[LOG] Content-Length header: {content_length}")
 
     if content_length is None or content_length == '0':
-        # --- ESTA ES LA PARTE NUEVA ---
-        # Cuerpo vacío (la conexión inicial de ChatGPT).
-        print("[LOG] Empty body detected. Assuming initial ChatGPT connection.")
-
-        # Enviar la lista de herramientas inmediatamente
-        print("[LOG] Sending mcp.tool.list_tools.result immediately...")
-        yield json.dumps({
-            "id": "auto_list_tools_on_connect",
-            "event": "mcp.tool.list_tools.result",
-            "data": {"tools": TOOL_DEFINITIONS}
-        })
-        print("[LOG] Tool list sent. Holding connection open.")
-
+        print("[LOG] Empty POST received. Holding open.")
         try:
-            while True:
-                await asyncio.sleep(60)  # Mantener la conexión viva
+            while True: await asyncio.sleep(60)
         except asyncio.CancelledError:
             print("[LOG] Client (empty connection) disconnected.")
-
-        print("--- [LOG] EMPTY CONNECTION CLOSED ---")
         return
 
-    # --- Este bloque es para tus pruebas de 'curl' con cuerpo JSON ---
+    # --- Este bloque SÍ se ejecutará ahora ---
     try:
-        print("[LOG] Non-empty body detected. Parsing JSON...")
         body = await request.json()
         print(f"[LOG] JSON Body parsed: {body}")
 
-        event_type = body.get("event")
-        # ... (el resto del código para manejar get_schema, query_facilities, etc.) ...
-        # (El código completo de la respuesta 23 está aquí)
-
+        # Obtener el ID de la solicitud (para JSON-RPC)
         event_id = body.get("id", "mcp_event_1")
+
+        # --- ¡LA SOLUCIÓN! Comprobar ambos protocolos ---
+        event_type = body.get("event")  # Para 'curl' tests
+        method_type = body.get("method")  # Para ChatGPT
+
         response_data = None
         response_event = None
 
-        if event_type == "mcp.tool.list_tools.invoke":
-            print("[LOG] Handling mcp.tool.list_tools.invoke")
+        # Manejar el 'initialize' de ChatGPT O el 'list_tools' de curl
+        if method_type == "initialize" or event_type == "mcp.tool.list_tools.invoke":
+            print(f"[LOG] Handling '{method_type or event_type}'. Sending tool list.")
             response_event = "mcp.tool.list_tools.result"
             response_data = {"tools": TOOL_DEFINITIONS}
 
-        elif event_type == "mcp.tool.invoke":
-            tool_id = body.get("data", {}).get("tool_id")
+        # Manejar 'mcp.tool.invoke' de ambos protocolos
+        elif event_type == "mcp.tool.invoke" or method_type == "mcp.tool.invoke":
+
+            params = {}
+            tool_id = None
+
+            if event_type == "mcp.tool.invoke":
+                # Formato 'curl' test
+                tool_id = body.get("data", {}).get("tool_id")
+                params = body.get("data", {}).get("parameters", {})
+            elif method_type == "mcp.tool.invoke":
+                # Formato JSON-RPC de ChatGPT
+                tool_id = body.get("params", {}).get("tool_id")
+                params = body.get("params", {}).get("parameters", {})
+
             print(f"[LOG] Handling mcp.tool.invoke for tool_id: {tool_id}")
-            params = body.get("data", {}).get("parameters", {})
 
             response_event = "mcp.tool.invoke.result"
             result_data = None
@@ -117,14 +117,15 @@ async def mcp_event_generator(request: Request):
                 result_data = {"error": f"Unknown tool_id: {tool_id}"}
 
             response_data = {"tool_id": tool_id, "result": result_data}
+
         else:
-            print(f"[LOG] Unknown event type: {event_type}")
+            print(f"[LOG] Unknown event/method: {event_type} / {method_type}")
             response_event = "mcp.error"
-            response_data = {"code": "unknown_event", "message": f"Unknown event type: {event_type}"}
+            response_data = {"code": "unknown_event", "message": f"Unknown event/method: {event_type} / {method_type}"}
 
         print(f"[LOG] Sending response event: {response_event}")
         yield json.dumps({
-            "id": f"resp_for_{event_id}",
+            "id": f"resp_for_{event_id}",  # Responder con el mismo ID
             "event": response_event,
             "data": response_data
         })
