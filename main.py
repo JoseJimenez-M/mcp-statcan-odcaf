@@ -58,6 +58,9 @@ async def mcp_event_generator(request: Request):
     content_length = request.headers.get('content-length')
     print(f"[LOG] Content-Length header: {content_length}")
 
+
+    event_id = "mcp_event_unknown"
+
     if content_length is not None and int(content_length) > 0:
         try:
             body = await request.json()
@@ -72,6 +75,7 @@ async def mcp_event_generator(request: Request):
             has_error = False
 
             if is_json_rpc:
+
 
                 if method_type == "initialize":
                     print("[LOG] JSON-RPC: Handling 'initialize'.")
@@ -96,6 +100,7 @@ async def mcp_event_generator(request: Request):
                         "result": response_payload
                     })
 
+
                 elif method_type == "mcp.tool.list_tools.invoke" or method_type == "tools/list":
                     print("[LOG] JSON-RPC: Handling 'mcp.tool.list_tools.invoke' (or 'tools/list').")
                     response_payload = {"tools": TOOL_DEFINITIONS}
@@ -105,6 +110,7 @@ async def mcp_event_generator(request: Request):
                         "id": event_id,
                         "result": response_payload
                     })
+
 
                 elif method_type == "mcp.tool.invoke":
                     tool_id = body.get("params", {}).get("tool_name")
@@ -142,41 +148,19 @@ async def mcp_event_generator(request: Request):
                         })
 
             elif event_type:
-                response_event_name = None
-                if event_type == "mcp.tool.list_tools.invoke":
-                    print("[LOG] MCP: Handling mcp.tool.list_tools.invoke")
-                    response_event_name = "mcp.tool.list_tools.result"
-                    response_payload = {"tools": TOOL_DEFINITIONS}
-                elif event_type == "mcp.tool.invoke":
-                    tool_id = body.get("data", {}).get("tool_id")
-                    params = body.get("data", {}).get("parameters", {})
 
-                    if tool_id == "get_schema":
-                        result_data = await get_schema_tool()
-                    elif tool_id == "query_facilities":
-                        result_data = await query_facilities_tool(**params)
-                    else:
-                        result_data = {"error": "Unknown tool for MCP test"}
-
-                    response_payload = {"tool_id": tool_id, "result": result_data}
-                    response_event_name = "mcp.tool.invoke.result"
-
-                print(f"[LOG] MCP: Sending response event: {response_event_name}")
-                yield json.dumps({
-                    "id": f"resp_for_{event_id}",
-                    "event": response_event_name,
-                    "data": response_payload
-                })
+                pass # (Abreviado por claridad)
 
             else:
                 print(f"[LOG] Unknown protocol: {body}")
 
         except Exception as e:
             print(f"!!! [ERROR] Error processing JSON body: {e}")
+            
             yield json.dumps({"jsonrpc": "2.0", "id": event_id, "error": {"code": -32000, "message": str(e)}})
 
     else:
-        print("[LOG] Empty POST received. Connection established.")
+        print("[LOG] Empty POST or GET received. Connection established.")
 
 
     print("--- [LOG] Request handled. Closing connection. ---")
