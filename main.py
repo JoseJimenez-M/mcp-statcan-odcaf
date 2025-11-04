@@ -6,14 +6,46 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from database import search_tool, fetch_tool, get_schema_tool, query_facilities_tool
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
-app = FastAPI()
+app = FastAPI(title="Cultural and Art Facilities API", version="1.0.0")
+
+# === Schemas ===
+class SearchRequest(BaseModel):
+    query: str
+    limit: int | None = 5
+
+
+class FetchRequest(BaseModel):
+    facility_id: str
+
+
+# === Endpoints ===
+@app.post("/search", tags=["tools"])
+async def search_facilities(body: SearchRequest):
+    """
+    Search for cultural and art facilities by name, type, city, or province.
+    """
+    return await search_tool(body.query, body.limit)
+
+
+@app.post("/fetch", tags=["tools"])
+async def fetch_facility(body: FetchRequest):
+    """
+    Fetch detailed information for a specific facility by its name/id.
+    """
+    return await fetch_tool(body.facility_id)
+
+
+@app.get("/")
+async def root():
+    return {"message": "✅ Odcaf MCP API running"}
+
 
 @app.get("/.well-known/ai-plugin.json")
-async def serve_ai_plugin():
+async def serve_manifest():
+    from fastapi.responses import FileResponse
     return FileResponse(".well-known/ai-plugin.json", media_type="application/json")
-
-
 
 app.add_middleware(
     CORSMiddleware,
