@@ -7,7 +7,8 @@ from sse_starlette.sse import EventSourceResponse
 
 # --- 1. Importar y configurar CORS ---
 from fastapi.middleware.cors import CORSMiddleware
-from database import get_schema_tool, query_facilities_tool
+# --- Importar las NUEVAS herramientas ---
+from database import search_tool, fetch_tool, get_schema_tool, query_facilities_tool
 
 app = FastAPI()
 
@@ -19,31 +20,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- 2. Definir las herramientas 'search' y 'fetch' de la documentación ---
 TOOL_DEFINITIONS = [
     {
-        "id": "get_schema",
-        "description": "Get the database schema, column names, and data types for the 'facilities' table."
+        "id": "search",
+        "description": "Search the Open Database of Cultural and Art Facilities (ODCAF) by keyword (e.g., name, city, province, or type)."
     },
     {
-        "id": "query_facilities",
-        "description": "Query the Open Database of Cultural and Art Facilities (ODCAF).",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "province": {"type": "string",
-                             "description": "Filter by province or territory (e.g., 'Ontario', 'Quebec')."},
-                "city": {"type": "string", "description": "Filter by city (e.g., 'Toronto', 'Montreal')."},
-                "facility_type": {"type": "string",
-                                  "description": "Filter by facility type (e.g., 'Museum', 'Gallery')."},
-                "limit": {"type": "integer", "description": "Max number of results to return.", "default": 5}
-            },
-            "required": []
-        }
+        "id": "fetch",
+        "description": "Fetch the full details for a specific cultural facility by its exact name (which is used as its ID)."
     }
 ]
 
 
-# --- 2. Lógica del Generador (Protocolo Híbrido Corregido) ---
+# --- 3. Lógica del Generador (Protocolo Híbrido Corregido) ---
 async def mcp_event_generator(request: Request):
     print("\n--- [LOG] NEW CONNECTION RECEIVED ---")
     session_id = "mcp_session_1"
@@ -91,7 +81,7 @@ async def mcp_event_generator(request: Request):
                     print("[LOG] JSON-RPC: Proactively sending tool list (SSE)...")
                     yield json.dumps({
                         "event": "mcp.tool.list_tools.result",
-                        "data": {"tools": TOOL_DEFINITIONS}
+                        "data": {"tools": TOOL_DEFINITIONS}  # <-- Enviando 'search' y 'fetch'
                     })
                     print("[LOG] JSON-RPC: Tool list sent.")
 
@@ -101,14 +91,14 @@ async def mcp_event_generator(request: Request):
                     params = body.get("params", {}).get("parameters", {})
                     print(f"[LOG] JSON-RPC: Handling mcp.tool.invoke for {tool_id}")
 
-                    if tool_id == "get_schema":
-                        response_payload = await get_schema_tool()
-                    elif tool_id == "query_facilities":
-                        if not params.get("province") and not params.get("city") and not params.get("facility_type"):
-                            response_payload = {"code": -32001, "message": "Your filter is too broad..."}
-                            has_error = True
-                        else:
-                            response_payload = await query_facilities_tool(**params)
+                    # --- 4. Llamar a las NUEVAS herramientas ---
+                    if tool_id == "search":
+                        query = params.get("query", "")
+                        limit = params.get("limit", 5)
+                        response_payload = await search_tool(query, limit)
+                    elif tool_id == "fetch":
+                        facility_id = params.get("id", "")
+                        response_payload = await fetch_tool(facility_id)
                     else:
                         response_payload = {"code": -32002, "message": f"Unknown tool_id: {tool_id}"}
                         has_error = True
@@ -134,15 +124,24 @@ async def mcp_event_generator(request: Request):
 
             # --- LÓGICA PARA MCP (tu prueba de curl) ---
             elif event_type:
+                # ... (Este código ahora usará tus herramientas antiguas para pruebas) ...
                 response_event_name = None
                 if event_type == "mcp.tool.list_tools.invoke":
                     print("[LOG] MCP: Handling mcp.tool.list_tools.invoke")
                     response_event_name = "mcp.tool.list_tools.result"
-                    response_payload = {"tools": TOOL_DEFINITIONS}
+                    response_payload = {"tools": TOOL_DEFINITIONS}  # <-- Enviando 'search' y 'fetch'
                 elif event_type == "mcp.tool.invoke":
                     tool_id = body.get("data", {}).get("tool_id")
                     params = body.get("data", {}).get("parameters", {})
-                    result_data = await query_facilities_tool(**params)
+
+                    # --- 5. Lógica de prueba 'curl' actualizada ---
+                    if tool_id == "get_schema":  # Para tus pruebas viejas
+                        result_data = await get_schema_tool()
+                    elif tool_id == "query_facilities":  # Para tus pruebas viejas
+                        result_data = await query_facilities_tool(**params)
+                    else:
+                        result_data = {"error": "Unknown tool for MCP test"}
+
                     response_payload = {"tool_id": tool_id, "result": result_data}
                     response_event_name = "mcp.tool.invoke.result"
 
@@ -175,8 +174,7 @@ async def mcp_event_generator(request: Request):
 
 @app.post("/sse")
 async def sse_endpoint(request: Request):
-    return EventSourceResponse(mcp_event_generator(request),
-                               media_type="text/stream")  # Corregido a 'text/event-stream'
+    return EventSourceResponse(mcp_event_generator(request), media_type="text/event-stream")
 
 
 @app.get("/")
