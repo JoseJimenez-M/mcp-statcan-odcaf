@@ -43,7 +43,6 @@ TOOL_DEFINITIONS = [
 ]
 
 
-# --- 2. Lógica del Generador Mejorada (Formateo de Errores) ---
 async def mcp_event_generator(request: Request):
     print("\n--- [LOG] NEW CONNECTION RECEIVED ---")
     session_id = "mcp_session_1"
@@ -67,8 +66,7 @@ async def mcp_event_generator(request: Request):
             event_type = body.get("event")
             method_type = body.get("method")
 
-            response_payload = None  # Esto será 'data' o 'result'
-            has_error = False  # Flag para construir la respuesta
+            response_payload = None
 
             # --- LÓGICA PARA JSON-RPC (ChatGPT) ---
             if is_json_rpc:
@@ -86,39 +84,23 @@ async def mcp_event_generator(request: Request):
                         response_payload = await get_schema_tool()
                     elif tool_id == "query_facilities":
                         if not params.get("province") and not params.get("city") and not params.get("facility_type"):
-                            response_payload = {"code": -32001,
-                                                "message": "Your filter is too broad; try adding province, city, or facility_type."}
-                            has_error = True
+                            response_payload = {"error": "Your filter is too broad..."}  # Será envuelto en 'result'
                         else:
                             response_payload = await query_facilities_tool(**params)
                     else:
-                        response_payload = {"code": -32002, "message": f"Unknown tool_id: {tool_id}"}
-                        has_error = True
+                        response_payload = {"error": f"Unknown tool_id: {tool_id}"}
 
-                    # Comprobar si la *función* devolvió un error (ej. "No results found")
-                    if isinstance(response_payload, dict) and 'error' in response_payload and not has_error:
-                        response_payload = {"code": -32000, "message": response_payload['error']}
-                        has_error = True
-
-                # --- LÓGICA DE RESPUESTA CORREGIDA ---
-                if has_error:
-                    print(f"[LOG] JSON-RPC: Sending ERROR response: {response_payload}")
-                    yield json.dumps({
-                        "jsonrpc": "2.0",
-                        "id": event_id,
-                        "error": response_payload  # Clave 'error'
-                    })
-                else:
-                    print(f"[LOG] JSON-RPC: Sending RESULT response for method {method_type}")
-                    yield json.dumps({
-                        "jsonrpc": "2.0",
-                        "id": event_id,
-                        "result": response_payload  # Clave 'result'
-                    })
+                # Enviar la respuesta en formato JSON-RPC
+                print(f"[LOG] JSON-RPC: Sending RESULT response for method {method_type}")
+                yield json.dumps({
+                    "jsonrpc": "2.0",
+                    "id": event_id,  # Responder con el mismo ID
+                    "result": response_payload
+                })
 
             # --- LÓGICA PARA MCP (tu prueba de curl) ---
             elif event_type:
-                # ... (esta lógica estaba bien y la dejamos para tus pruebas) ...
+                response_event_name = None
                 if event_type == "mcp.tool.list_tools.invoke":
                     print("[LOG] MCP: Handling mcp.tool.list_tools.invoke")
                     response_event_name = "mcp.tool.list_tools.result"
@@ -134,8 +116,7 @@ async def mcp_event_generator(request: Request):
                         result_data = await get_schema_tool()
                     elif tool_id == "query_facilities":
                         if not params.get("province") and not params.get("city") and not params.get("facility_type"):
-                            result_data = {
-                                "error": "Your filter is too broad; try adding province, city, or facility_type."}
+                            result_data = {"error": "Your filter is too broad..."}
                         else:
                             result_data = await query_facilities_tool(**params)
                     else:
@@ -155,7 +136,10 @@ async def mcp_event_generator(request: Request):
 
         except Exception as e:
             print(f"!!! [ERROR] Error processing JSON body: {e}")
-            yield json.dumps({"jsonrpc": "2.0", "id": event_id, "error": {"code": -32000, "message": str(e)}})
+            yield json.dumps({
+                "event": "mcp.error",
+                "data": {"code": "internal_server_error", "message": str(e)}
+            })
 
     else:
         print("[LOG] Empty POST received. Connection established.")
