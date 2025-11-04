@@ -48,7 +48,7 @@ TOOL_DEFINITIONS = [
 ]
 
 
-# --- 3. Lógica del Generador (Protocolo Híbrido Corregido) ---
+# --- 3. Lógica del Generador (Protocolo JSON-RPC Corregido) ---
 async def mcp_event_generator(request: Request):
     print("\n--- [LOG] NEW CONNECTION RECEIVED ---")
     session_id = "mcp_session_1"
@@ -92,13 +92,18 @@ async def mcp_event_generator(request: Request):
                         "result": response_payload
                     })
 
-                    # --- ¡EL PASO 4 FALTANTE! Enviar la lista de herramientas proactivamente ---
-                    print("[LOG] JSON-RPC: Proactively sending tool list (SSE)...")
+                    # --- ¡ERROR ELIMINADO! Ya no enviamos la lista proactivamente ---
+
+                # --- ¡NUEVO! Manejar la solicitud 'list_tools' ---
+                elif method_type == "mcp.tool.list_tools.invoke":
+                    print("[LOG] JSON-RPC: Handling 'mcp.tool.list_tools.invoke'.")
+                    response_payload = {"tools": TOOL_DEFINITIONS}
+                    print(f"[LOG] JSON-RPC: Sending RESULT for list_tools")
                     yield json.dumps({
-                        "event": "mcp.tool.list_tools.result",
-                        "data": {"tools": TOOL_DEFINITIONS}  # <-- Enviando 'search' y 'fetch'
+                        "jsonrpc": "2.0",
+                        "id": event_id,
+                        "result": response_payload
                     })
-                    print("[LOG] JSON-RPC: Tool list sent.")
 
                 # --- Lógica para invocaciones de herramientas (PASO 6+) ---
                 elif method_type == "mcp.tool.invoke":
@@ -138,6 +143,7 @@ async def mcp_event_generator(request: Request):
 
             # --- LÓGICA PARA MCP (tu prueba de curl) ---
             elif event_type:
+                # ... (Tu código de prueba 'curl' sigue funcionando aquí) ...
                 response_event_name = None
                 if event_type == "mcp.tool.list_tools.invoke":
                     print("[LOG] MCP: Handling mcp.tool.list_tools.invoke")
@@ -147,6 +153,7 @@ async def mcp_event_generator(request: Request):
                     tool_id = body.get("data", {}).get("tool_id")
                     params = body.get("data", {}).get("parameters", {})
 
+                    # (Tus herramientas de prueba antiguas)
                     if tool_id == "get_schema":
                         result_data = await get_schema_tool()
                     elif tool_id == "query_facilities":
@@ -194,5 +201,5 @@ def root():
     return {"message": "MCP Server is running. Use the /sse endpoint."}
 
 
-if __name__ == "__main__":
+if name == "main":
     uvicorn.run(app, host="0.0.0.0", port=8000)
