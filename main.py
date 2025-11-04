@@ -85,7 +85,9 @@ async def mcp_event_generator(request: Request):
                             "name": "Servidor ODCAF (Estadísticas Canadá)",
                             "version": "1.0.0"
                         },
-                        "capabilities": {}
+                        "capabilities": {
+                            "tools": {}
+                        }
                     }
                     print(f"[LOG] JSON-RPC: Sending RESULT for initialize")
                     yield json.dumps({
