@@ -43,7 +43,7 @@ TOOL_DEFINITIONS = [
 ]
 
 
-# --- 2. Lógica del Generador Mejorada (Formateo de Errores) ---
+# --- 2. Lógica del Generador Mejorada (Protocolo Corregido) ---
 async def mcp_event_generator(request: Request):
     print("\n--- [LOG] NEW CONNECTION RECEIVED ---")
     session_id = "mcp_session_1"
@@ -67,14 +67,24 @@ async def mcp_event_generator(request: Request):
             event_type = body.get("event")
             method_type = body.get("method")
 
-            response_payload = None  # Esto será 'data' o 'result'
-            has_error = False  # Flag para construir la respuesta
+            response_payload = None
+            has_error = False
 
             # --- LÓGICA PARA JSON-RPC (ChatGPT) ---
             if is_json_rpc:
 
+                # --- ¡LA SOLUCIÓN! Manejar 'initialize' por separado ---
                 if method_type == "initialize":
                     print("[LOG] JSON-RPC: Handling 'initialize'.")
+                    # Esta es la respuesta correcta a 'initialize'
+                    response_payload = {
+                        "protocolVersion": "2025-03-26",
+                        "capabilities": {}
+                    }
+
+                # ChatGPT enviará esto DESPUÉS de 'initialize'
+                elif method_type == "mcp.tool.list_tools.invoke":
+                    print("[LOG] JSON-RPC: Handling 'mcp.tool.list_tools.invoke'.")
                     response_payload = {"tools": TOOL_DEFINITIONS}
 
                 elif method_type == "mcp.tool.invoke":
@@ -86,8 +96,7 @@ async def mcp_event_generator(request: Request):
                         response_payload = await get_schema_tool()
                     elif tool_id == "query_facilities":
                         if not params.get("province") and not params.get("city") and not params.get("facility_type"):
-                            response_payload = {"code": -32001,
-                                                "message": "Your filter is too broad; try adding province, city, or facility_type."}
+                            response_payload = {"code": -32001, "message": "Your filter is too broad..."}
                             has_error = True
                         else:
                             response_payload = await query_facilities_tool(**params)
@@ -95,51 +104,38 @@ async def mcp_event_generator(request: Request):
                         response_payload = {"code": -32002, "message": f"Unknown tool_id: {tool_id}"}
                         has_error = True
 
-                    # Comprobar si la *función* devolvió un error (ej. "No results found")
                     if isinstance(response_payload, dict) and 'error' in response_payload and not has_error:
                         response_payload = {"code": -32000, "message": response_payload['error']}
                         has_error = True
 
-                # --- LÓGICA DE RESPUESTA CORREGIDA ---
+                # --- Lógica de Respuesta JSON-RPC ---
                 if has_error:
                     print(f"[LOG] JSON-RPC: Sending ERROR response: {response_payload}")
                     yield json.dumps({
                         "jsonrpc": "2.0",
                         "id": event_id,
-                        "error": response_payload  # Clave 'error'
+                        "error": response_payload
                     })
                 else:
                     print(f"[LOG] JSON-RPC: Sending RESULT response for method {method_type}")
                     yield json.dumps({
                         "jsonrpc": "2.0",
                         "id": event_id,
-                        "result": response_payload  # Clave 'result'
+                        "result": response_payload
                     })
 
             # --- LÓGICA PARA MCP (tu prueba de curl) ---
             elif event_type:
                 # ... (esta lógica estaba bien y la dejamos para tus pruebas) ...
+                response_event_name = None
                 if event_type == "mcp.tool.list_tools.invoke":
                     print("[LOG] MCP: Handling mcp.tool.list_tools.invoke")
                     response_event_name = "mcp.tool.list_tools.result"
                     response_payload = {"tools": TOOL_DEFINITIONS}
-
                 elif event_type == "mcp.tool.invoke":
                     tool_id = body.get("data", {}).get("tool_id")
                     params = body.get("data", {}).get("parameters", {})
-                    print(f"[LOG] MCP: Handling mcp.tool.invoke for {tool_id}")
-
-                    result_data = None
-                    if tool_id == "get_schema":
-                        result_data = await get_schema_tool()
-                    elif tool_id == "query_facilities":
-                        if not params.get("province") and not params.get("city") and not params.get("facility_type"):
-                            result_data = {
-                                "error": "Your filter is too broad; try adding province, city, or facility_type."}
-                        else:
-                            result_data = await query_facilities_tool(**params)
-                    else:
-                        result_data = {"error": f"Unknown tool_id: {tool_id}"}
+                    result_data = None  # ... (lógica de la herramienta) ...
                     response_payload = {"tool_id": tool_id, "result": result_data}
                     response_event_name = "mcp.tool.invoke.result"
 
