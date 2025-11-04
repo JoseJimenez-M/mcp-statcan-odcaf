@@ -16,9 +16,8 @@ app.add_middleware(
     allow_origins=["https://chat.openai.com"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"],
+    allow_headers=["*"], 
 )
-
 
 TOOL_DEFINITIONS = [
     {
@@ -52,8 +51,10 @@ async def mcp_event_generator(request: Request):
         "data": {"session_id": session_id}
     })
 
+
     try:
         body = await request.json()
+
         event_type = body.get("event")
         event_id = body.get("id", "mcp_event_1")
 
@@ -103,18 +104,22 @@ async def mcp_event_generator(request: Request):
         print("Client disconnected.")
         raise
     except Exception as e:
-        print(f"An error occurred: {e}")
+        print(f"An error occurred (likely empty initial POST): {e}")
         yield json.dumps({
             "event": "mcp.error",
             "data": {"code": "internal_server_error", "message": str(e)}
         })
+    finally:
+        print("MCP stream generator finished.")
 
 
 @app.options("/sse")
 async def options_sse():
-    return Response(status_code=200)
-
-
+    return Response(status_code=200, headers={
+        "Access-Control-Allow-Origin": "https://chat.openai.com",
+        "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+        "Access-Control-Allow-Headers": "*"
+    })
 
 
 @app.post("/sse")
