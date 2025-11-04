@@ -2,15 +2,14 @@ import asyncio
 import json
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from sse_starlette.sse import EventSourceResponse
-from fastapi.middleware.cors import CORSMiddleware
 
+from fastapi.middleware.cors import CORSMiddleware
 
 from database import get_schema_tool, query_facilities_tool
 
 app = FastAPI()
-
 
 app.add_middleware(
     CORSMiddleware,
@@ -19,7 +18,6 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
-
 
 
 TOOL_DEFINITIONS = [
@@ -110,6 +108,13 @@ async def mcp_event_generator(request: Request):
             "event": "mcp.error",
             "data": {"code": "internal_server_error", "message": str(e)}
         })
+
+
+@app.options("/sse")
+async def options_sse():
+    return Response(status_code=200)
+
+
 
 
 @app.post("/sse")
