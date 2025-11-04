@@ -59,140 +59,124 @@ async def mcp_event_generator(request: Request):
         "data": {"session_id": session_id}
     })
 
-    content_length = request.headers.get('content-length')
-    print(f"[LOG] Content-Length header: {content_length}")
+    # Búfer para leer el stream de la solicitud
+    buffer = ""
 
-    if content_length is not None and int(content_length) > 0:
-        try:
-            body = await request.json()
-            print(f"[LOG] JSON Body parsed: {body}")
-
-            event_id = body.get("id", "mcp_event_1")
-            is_json_rpc = body.get("jsonrpc") == "2.0"
-            event_type = body.get("event")
-            method_type = body.get("method")
-
-            response_payload = None
-            has_error = False
-
-            # --- LÓGICA PARA JSON-RPC (ChatGPT) ---
-            if is_json_rpc:
-
-                # --- PASO 3 (Respuesta a 'initialize') ---
-                if method_type == "initialize":
-                    print("[LOG] JSON-RPC: Handling 'initialize'.")
-
-                    # --- ¡CORRECCIÓN! Lee la versión del protocolo del request ---
-                    client_protocol_version = body.get("params", {}).get("protocolVersion", "2025-03-26")
-                    print(f"[LOG] Client requested protocol version: {client_protocol_version}")
-
-                    response_payload = {
-                        "protocolVersion": client_protocol_version,  # <-- Usa la versión del cliente
-                        "serverInfo": {
-                            "name": "Servidor ODCAF (Estadísticas Canadá)",
-                            "version": "1.0.0"
-                        },
-                        "capabilities": {}
-                    }
-
-                    print(f"[LOG] JSON-RPC: Sending RESULT for initialize")
-                    yield json.dumps({
-                        "jsonrpc": "2.0",
-                        "id": event_id,
-                        "result": response_payload
-                    })
-
-                # --- ¡NUEVO! Manejar la solicitud 'list_tools' ---
-                elif method_type == "mcp.tool.list_tools.invoke":
-                    print("[LOG] JSON-RPC: Handling 'mcp.tool.list_tools.invoke'.")
-                    response_payload = {"tools": TOOL_DEFINITIONS}
-                    print(f"[LOG] JSON-RPC: Sending RESULT for list_tools")
-                    yield json.dumps({
-                        "jsonrpc": "2.0",
-                        "id": event_id,
-                        "result": response_payload
-                    })
-
-                # --- Lógica para invocaciones de herramientas (PASO 6+) ---
-                elif method_type == "mcp.tool.invoke":
-                    tool_id = body.get("params", {}).get("tool_id")
-                    params = body.get("params", {}).get("parameters", {})
-                    print(f"[LOG] JSON-RPC: Handling mcp.tool.invoke for {tool_id}")
-
-                    if tool_id == "search":
-                        query = params.get("query", "")
-                        limit = params.get("limit", 5)
-                        response_payload = await search_tool(query, limit)
-                    elif tool_id == "fetch":
-                        facility_id = params.get("id", "")
-                        response_payload = await fetch_tool(facility_id)
-                    else:
-                        response_payload = {"code": -32002, "message": f"Unknown tool_id: {tool_id}"}
-                        has_error = True
-
-                    if isinstance(response_payload, dict) and 'error' in response_payload and not has_error:
-                        response_payload = {"code": -32000, "message": response_payload['error']}
-                        has_error = True
-
-                    if has_error:
-                        print(f"[LOG] JSON-RPC: Sending ERROR response: {response_payload}")
-                        yield json.dumps({
-                            "jsonrpc": "2.0",
-                            "id": event_id,
-                            "error": response_payload
-                        })
-                    else:
-                        print(f"[LOG] JSON-RPC: Sending RESULT response for method {method_type}")
-                        yield json.dumps({
-                            "jsonrpc": "2.0",
-                            "id": event_id,
-                            "result": response_payload
-                        })
-
-            # --- LÓGICA PARA MCP (tu prueba de curl) ---
-            elif event_type:
-                response_event_name = None
-                if event_type == "mcp.tool.list_tools.invoke":
-                    print("[LOG] MCP: Handling mcp.tool.list_tools.invoke")
-                    response_event_name = "mcp.tool.list_tools.result"
-                    response_payload = {"tools": TOOL_DEFINITIONS}
-                elif event_type == "mcp.tool.invoke":
-                    tool_id = body.get("data", {}).get("tool_id")
-                    params = body.get("data", {}).get("parameters", {})
-
-                    if tool_id == "get_schema":
-                        result_data = await get_schema_tool()
-                    elif tool_id == "query_facilities":
-                        result_data = await query_facilities_tool(**params)
-                    else:
-                        result_data = {"error": "Unknown tool for MCP test"}
-
-                    response_payload = {"tool_id": tool_id, "result": result_data}
-                    response_event_name = "mcp.tool.invoke.result"
-
-                print(f"[LOG] MCP: Sending response event: {response_event_name}")
-                yield json.dumps({
-                    "id": f"resp_for_{event_id}",
-                    "event": response_event_name,
-                    "data": response_payload
-                })
-
-            else:
-                print(f"[LOG] Unknown protocol: {body}")
-
-        except Exception as e:
-            print(f"!!! [ERROR] Error processing JSON body: {e}")
-            yield json.dumps({"jsonrpc": "2.0", "id": event_id, "error": {"code": -32000, "message": str(e)}})
-
-    else:
-        print("[LOG] Empty POST received. Connection established.")
-
-    print("[LOG] Entering keep-alive loop...")
     try:
-        while True:
-            await asyncio.sleep(60)
+        # Bucle principal: leer el stream de la solicitud mientras esté vivo
+        async for chunk in request.stream():
+            buffer += chunk.decode('utf-8')
+
+            # Intentar procesar uno o más JSONs completos en el búfer
+            # El protocolo puede enviar múltiples mensajes concatenados
+            while True:
+                try:
+                    # Buscar el fin de un objeto JSON (}) y el inicio del siguiente ({)
+                    # Esta es una forma simple de parsear JSONs concatenados.
+                    # Asume que los mensajes no contienen '{' o '}' en sus strings.
+                    # Una implementación más robusta usaría un parser de stream JSON.
+
+                    # Intentamos encontrar un JSON completo
+                    body_str, rest = buffer.split('}', 1)
+                    body_str += '}'
+                    buffer = rest  # Guardar el resto para el próximo ciclo
+
+                    body = json.loads(body_str)
+                    print(f"[LOG] JSON Body parsed: {body}")
+
+                    event_id = body.get("id", "mcp_event_1")
+                    is_json_rpc = body.get("jsonrpc") == "2.0"
+                    method_type = body.get("method")
+
+                    response_payload = None
+                    has_error = False
+
+                    if is_json_rpc:
+                        # --- PASO 3 (Respuesta a 'initialize') ---
+                        if method_type == "initialize":
+                            print("[LOG] JSON-RPC: Handling 'initialize'.")
+
+                            # ¡FIX de Versión Dinámica!
+                            client_protocol_version = body.get("params", {}).get("protocolVersion", "2025-03-26")
+                            print(f"[LOG] Client requested protocol version: {client_protocol_version}")
+
+                            response_payload = {
+                                "protocolVersion": client_protocol_version,
+                                "serverInfo": {
+                                    "name": "Servidor ODCAF (Estadísticas Canadá)",
+                                    "version": "1.0.0"
+                                },
+                                "capabilities": {}
+                            }
+                            print(f"[LOG] JSON-RPC: Sending RESULT for initialize")
+                            yield json.dumps({
+                                "jsonrpc": "2.0",
+                                "id": event_id,
+                                "result": response_payload
+                            })
+
+                        # --- PASO 4 (Respuesta a 'list_tools') ---
+                        elif method_type == "mcp.tool.list_tools.invoke":
+                            print("[LOG] JSON-RPC: Handling 'mcp.tool.list_tools.invoke'.")
+                            response_payload = {"tools": TOOL_DEFINITIONS}
+                            print(f"[LOG] JSON-RPC: Sending RESULT for list_tools")
+                            yield json.dumps({
+                                "jsonrpc": "2.0",
+                                "id": event_id,
+                                "result": response_payload
+                            })
+
+                        # --- PASO 5 (Respuesta a 'invoke') ---
+                        elif method_type == "mcp.tool.invoke":
+                            tool_id = body.get("params", {}).get("tool_id")
+                            params = body.get("params", {}).get("parameters", {})
+                            print(f"[LOG] JSON-RPC: Handling mcp.tool.invoke for {tool_id}")
+
+                            if tool_id == "search":
+                                query = params.get("query", "")
+                                limit = params.get("limit", 5)
+                                response_payload = await search_tool(query, limit)
+                            elif tool_id == "fetch":
+                                facility_id = params.get("id", "")
+                                response_payload = await fetch_tool(facility_id)
+                            else:
+                                response_payload = {"code": -32002, "message": f"Unknown tool_id: {tool_id}"}
+                                has_error = True
+
+                            if isinstance(response_payload, dict) and 'error' in response_payload and not has_error:
+                                response_payload = {"code": -32000, "message": response_payload['error']}
+                                has_error = True
+
+                            if has_error:
+                                print(f"[LOG] JSON-RPC: Sending ERROR response: {response_payload}")
+                                yield json.dumps({
+                                    "jsonrpc": "2.0",
+                                    "id": event_id,
+                                    "error": response_payload
+                                })
+                            else:
+                                print(f"[LOG] JSON-RPC: Sending RESULT response for method {method_type}")
+                                yield json.dumps({
+                                    "jsonrpc": "2.0",
+                                    "id": event_id,
+                                    "result": response_payload
+                                })
+
+                        else:
+                            print(f"[LOG] Unknown JSON-RPC method: {method_type}")
+
+                    else:
+                        print(f"[LOG] Unknown protocol: {body}")
+
+                except (json.JSONDecodeError, ValueError):
+                    # El JSON en el búfer no está completo, esperar más chunks
+                    break
+
     except asyncio.CancelledError:
-        print("[LOG] Client disconnected. Closing keep-alive loop.")
+        print("[LOG] Client disconnected. Closing stream.")
+    except Exception as e:
+        print(f"!!! [ERROR] Error processing stream: {e}")
+        yield json.dumps({"jsonrpc": "2.0", "id": "error", "error": {"code": -32000, "message": str(e)}})
     finally:
         print("--- [LOG] CONNECTION CLOSED ---")
 
