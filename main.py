@@ -81,14 +81,20 @@ async def mcp_event_generator(request: Request):
                 # --- PASO 3 (Respuesta a 'initialize') ---
                 if method_type == "initialize":
                     print("[LOG] JSON-RPC: Handling 'initialize'.")
+
+                    # --- ¡CORRECCIÓN! Lee la versión del protocolo del request ---
+                    client_protocol_version = body.get("params", {}).get("protocolVersion", "2025-03-26")
+                    print(f"[LOG] Client requested protocol version: {client_protocol_version}")
+
                     response_payload = {
-                        "protocolVersion": "2025-03-26",
+                        "protocolVersion": client_protocol_version,  # <-- Usa la versión del cliente
                         "serverInfo": {
                             "name": "Servidor ODCAF (Estadísticas Canadá)",
                             "version": "1.0.0"
                         },
                         "capabilities": {}
                     }
+
                     print(f"[LOG] JSON-RPC: Sending RESULT for initialize")
                     yield json.dumps({
                         "jsonrpc": "2.0",
