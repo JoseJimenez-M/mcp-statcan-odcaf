@@ -1,11 +1,8 @@
-import asyncio
 import json
 import uvicorn
-from fastapi import FastAPI, Request
-from fastapi.responses import StreamingResponse, Response
-from sse_starlette.sse import EventSourceResponse
-
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+
 from database import search_tool, fetch_tool, get_schema_tool, query_facilities_tool
 
 app = FastAPI()
@@ -45,7 +42,8 @@ TOOL_DEFINITIONS = [
 ]
 
 
-async def mcp_event_generator(request: Request):
+@app.post("/sse")
+async def sse_endpoint(request: Request):
     print("\n--- [LOG] NEW CONNECTION RECEIVED ---")
 
     try:
@@ -57,8 +55,10 @@ async def mcp_event_generator(request: Request):
         is_json_rpc = body.get("jsonrpc") == "2.0"
 
         if not is_json_rpc:
-            yield json.dumps({"error": "Invalid JSON-RPC format"})
-            return
+            return Response(
+                content=json.dumps({"error": "Invalid JSON-RPC format"}),
+                media_type="application/json"
+            )
 
         # 1️⃣ initialize
         if method == "initialize":
@@ -68,13 +68,13 @@ async def mcp_event_generator(request: Request):
                 "serverInfo": {"name": "ODCAF MCP Server", "version": "1.0.0"},
                 "capabilities": {"tools": {}}
             }
-            yield json.dumps({"jsonrpc": "2.0", "id": event_id, "result": result})
+            response = {"jsonrpc": "2.0", "id": event_id, "result": result}
 
         # 2️⃣ list tools
         elif method in ["mcp.tool.list_tools.invoke", "tools/list"]:
             print("[LOG] Handling list_tools")
             result = {"tools": TOOL_DEFINITIONS}
-            yield json.dumps({"jsonrpc": "2.0", "id": event_id, "result": result})
+            response = {"jsonrpc": "2.0", "id": event_id, "result": result}
 
         # 3️⃣ invoke tool
         elif method == "mcp.tool.invoke":
@@ -90,31 +90,27 @@ async def mcp_event_generator(request: Request):
             else:
                 result = {"error": f"Unknown tool {tool_id}"}
 
-            yield json.dumps({"jsonrpc": "2.0", "id": event_id, "result": result})
+            response = {"jsonrpc": "2.0", "id": event_id, "result": result}
 
+        # 4️⃣ unknown method
         else:
             print(f"[LOG] Unknown method: {method}")
-            yield json.dumps({
+            response = {
                 "jsonrpc": "2.0",
                 "id": event_id,
                 "error": {"code": -32601, "message": f"Unknown method: {method}"}
-            })
+            }
 
     except Exception as e:
         print(f"[ERROR] {e}")
-        yield json.dumps({
+        response = {
             "jsonrpc": "2.0",
             "id": "mcp_error",
             "error": {"code": -32000, "message": str(e)}
-        })
+        }
 
     print("--- [LOG] Request handled. Closing connection. ---")
-
-
-
-@app.post("/sse")
-async def sse_endpoint(request: Request):
-    return EventSourceResponse(mcp_event_generator(request), media_type="text/event-stream")
+    return Response(content=json.dumps(response), media_type="application/json")
 
 
 @app.get("/")
