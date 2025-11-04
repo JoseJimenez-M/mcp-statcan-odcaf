@@ -5,9 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse, Response
 from sse_starlette.sse import EventSourceResponse
 
-# --- 1. Importar y configurar CORS ---
 from fastapi.middleware.cors import CORSMiddleware
-# --- Usar las herramientas de la documentación oficial ---
 from database import search_tool, fetch_tool, get_schema_tool, query_facilities_tool
 
 app = FastAPI()
@@ -20,12 +18,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- 2. Definir las herramientas 'search' y 'fetch' de la documentación ---
 TOOL_DEFINITIONS = [
     {
-        "id": "search",
+        "name": "search",
         "description": "Search the Open Database of Cultural and Art Facilities (ODCAF) by keyword (e.g., name, city, province, or type).",
-        "parameters": {
+        "input_schema": {
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "The search term (e.g., 'Museum', 'Toronto', 'Gallery')."},
@@ -35,9 +32,9 @@ TOOL_DEFINITIONS = [
         }
     },
     {
-        "id": "fetch",
+        "name": "fetch",
         "description": "Fetch the full details for a specific cultural facility by its exact name (which is used as its ID).",
-        "parameters": {
+        "input_schema": {
             "type": "object",
             "properties": {
                 "id": {"type": "string", "description": "The exact name of the facility to fetch."}
@@ -48,7 +45,6 @@ TOOL_DEFINITIONS = [
 ]
 
 
-# --- 3. Lógica del Generador (Protocolo JSON-RPC Corregido) ---
 async def mcp_event_generator(request: Request):
     print("\n--- [LOG] NEW CONNECTION RECEIVED ---")
     session_id = "mcp_session_1"
@@ -75,20 +71,16 @@ async def mcp_event_generator(request: Request):
             response_payload = None
             has_error = False
 
-            # --- LÓGICA PARA JSON-RPC (ChatGPT) ---
             if is_json_rpc:
 
-                # --- PASO 3 (Respuesta a 'initialize') ---
                 if method_type == "initialize":
                     print("[LOG] JSON-RPC: Handling 'initialize'.")
 
-                    # --- ¡CORRECCIÓN DE VERSIÓN! ---
                     client_protocol_version = body.get("params", {}).get("protocolVersion", "2025-03-26")
                     print(f"[LOG] Client requested protocol version: {client_protocol_version}")
 
                     response_payload = {
                         "protocolVersion": client_protocol_version,
-                        # --- ¡CORRECCIÓN DE serverInfo! ---
                         "serverInfo": {
                             "name": "Servidor ODCAF (Estadísticas Canadá)",
                             "version": "1.0.0"
@@ -102,7 +94,6 @@ async def mcp_event_generator(request: Request):
                         "result": response_payload
                     })
 
-                # --- Manejar la solicitud 'list_tools' ---
                 elif method_type == "mcp.tool.list_tools.invoke" or method_type == "tools/list":
                     print("[LOG] JSON-RPC: Handling 'mcp.tool.list_tools.invoke' (or 'tools/list').")
                     response_payload = {"tools": TOOL_DEFINITIONS}
@@ -113,9 +104,8 @@ async def mcp_event_generator(request: Request):
                         "result": response_payload
                     })
 
-                # --- Lógica para invocaciones de herramientas (PASO 6+) ---
                 elif method_type == "mcp.tool.invoke":
-                    tool_id = body.get("params", {}).get("tool_id")
+                    tool_id = body.get("params", {}).get("tool_name")
                     params = body.get("params", {}).get("parameters", {})
                     print(f"[LOG] JSON-RPC: Handling mcp.tool.invoke for {tool_id}")
 
@@ -149,9 +139,7 @@ async def mcp_event_generator(request: Request):
                             "result": response_payload
                         })
 
-            # --- LÓGICA PARA MCP (tu prueba de curl) ---
             elif event_type:
-                # (Tu lógica de prueba original está bien aquí)
                 response_event_name = None
                 if event_type == "mcp.tool.list_tools.invoke":
                     print("[LOG] MCP: Handling mcp.tool.list_tools.invoke")
@@ -188,10 +176,7 @@ async def mcp_event_generator(request: Request):
     else:
         print("[LOG] Empty POST received. Connection established.")
 
-    # --- ¡CORRECCIÓN! ELIMINAMOS EL BUCLE "keep-alive" ---
-    # Al no tener un bucle "while True", el generador
-    # terminará aquí, cerrará la conexión, y permitirá
-    # que OpenAI envíe la *siguiente* solicitud.
+
     print("--- [LOG] Request handled. Closing connection. ---")
 
 
