@@ -7,6 +7,7 @@ from sse_starlette.sse import EventSourceResponse
 
 # --- 1. Importar y configurar CORS ---
 from fastapi.middleware.cors import CORSMiddleware
+# --- Usar las herramientas de la documentación oficial ---
 from database import search_tool, fetch_tool, get_schema_tool, query_facilities_tool
 
 app = FastAPI()
@@ -19,12 +20,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- 2. ¡LA SOLUCIÓN! Añadir los parámetros requeridos ---
+# --- 2. Definir las herramientas 'search' y 'fetch' de la documentación ---
 TOOL_DEFINITIONS = [
     {
         "id": "search",
         "description": "Search the Open Database of Cultural and Art Facilities (ODCAF) by keyword (e.g., name, city, province, or type).",
-        # --- BLOQUE NUEVO ---
         "parameters": {
             "type": "object",
             "properties": {
@@ -37,7 +37,6 @@ TOOL_DEFINITIONS = [
     {
         "id": "fetch",
         "description": "Fetch the full details for a specific cultural facility by its exact name (which is used as its ID).",
-        # --- BLOQUE NUEVO ---
         "parameters": {
             "type": "object",
             "properties": {
@@ -49,7 +48,7 @@ TOOL_DEFINITIONS = [
 ]
 
 
-# --- 3. Lógica del Generador (Sin cambios, ya era correcta) ---
+# --- 3. Lógica del Generador (Protocolo JSON-RPC Corregido) ---
 async def mcp_event_generator(request: Request):
     print("\n--- [LOG] NEW CONNECTION RECEIVED ---")
     session_id = "mcp_session_1"
@@ -76,8 +75,10 @@ async def mcp_event_generator(request: Request):
             response_payload = None
             has_error = False
 
+            # --- LÓGICA PARA JSON-RPC (ChatGPT) ---
             if is_json_rpc:
 
+                # --- PASO 3 (Respuesta a 'initialize') ---
                 if method_type == "initialize":
                     print("[LOG] JSON-RPC: Handling 'initialize'.")
                     response_payload = {
@@ -91,13 +92,20 @@ async def mcp_event_generator(request: Request):
                         "result": response_payload
                     })
 
-                    print("[LOG] JSON-RPC: Proactively sending tool list (SSE)...")
-                    yield json.dumps({
-                        "event": "mcp.tool.list_tools.result",
-                        "data": {"tools": TOOL_DEFINITIONS}
-                    })
-                    print("[LOG] JSON-RPC: Tool list sent.")
+                    # --- ¡ERROR ELIMINADO! Ya no enviamos la lista proactivamente ---
 
+                # --- ¡NUEVO! Manejar la solicitud 'list_tools' ---
+                elif method_type == "mcp.tool.list_tools.invoke":
+                    print("[LOG] JSON-RPC: Handling 'mcp.tool.list_tools.invoke'.")
+                    response_payload = {"tools": TOOL_DEFINITIONS}
+                    print(f"[LOG] JSON-RPC: Sending RESULT for list_tools")
+                    yield json.dumps({
+                        "jsonrpc": "2.0",
+                        "id": event_id,
+                        "result": response_payload
+                    })
+
+                # --- Lógica para invocaciones de herramientas (PASO 6+) ---
                 elif method_type == "mcp.tool.invoke":
                     tool_id = body.get("params", {}).get("tool_id")
                     params = body.get("params", {}).get("parameters", {})
@@ -133,7 +141,9 @@ async def mcp_event_generator(request: Request):
                             "result": response_payload
                         })
 
+            # --- LÓGICA PARA MCP (tu prueba de curl) ---
             elif event_type:
+                # ... (Tu código de prueba 'curl' sigue funcionando aquí) ...
                 response_event_name = None
                 if event_type == "mcp.tool.list_tools.invoke":
                     print("[LOG] MCP: Handling mcp.tool.list_tools.invoke")
@@ -143,6 +153,7 @@ async def mcp_event_generator(request: Request):
                     tool_id = body.get("data", {}).get("tool_id")
                     params = body.get("data", {}).get("parameters", {})
 
+                    # (Tus herramientas de prueba antiguas)
                     if tool_id == "get_schema":
                         result_data = await get_schema_tool()
                     elif tool_id == "query_facilities":
