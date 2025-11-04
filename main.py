@@ -43,7 +43,7 @@ TOOL_DEFINITIONS = [
 ]
 
 
-# --- 2. Lógica del Generador Mejorada (Envío Proactivo) ---
+# --- 2. Lógica del Generador (Protocolo JSON-RPC Corregido) ---
 async def mcp_event_generator(request: Request):
     print("\n--- [LOG] NEW CONNECTION RECEIVED ---")
     session_id = "mcp_session_1"
@@ -64,8 +64,8 @@ async def mcp_event_generator(request: Request):
 
             event_id = body.get("id", "mcp_event_1")
             is_json_rpc = body.get("jsonrpc") == "2.0"
-            event_type = body.get("event")
-            method_type = body.get("method")
+            event_type = body.get("event")  # Para tus pruebas 'curl'
+            method_type = body.get("method")  # Para ChatGPT
 
             response_payload = None
             has_error = False
@@ -73,33 +73,59 @@ async def mcp_event_generator(request: Request):
             # --- LÓGICA PARA JSON-RPC (ChatGPT) ---
             if is_json_rpc:
 
-                # --- ¡LA SOLUCIÓN! Manejar 'initialize' por separado ---
+                # --- PASO 3 (Respuesta a 'initialize') ---
                 if method_type == "initialize":
                     print("[LOG] JSON-RPC: Handling 'initialize'.")
                     response_payload = {
                         "protocolVersion": "2025-03-26",
                         "capabilities": {}
                     }
-                    print(f"[LOG] JSON-RPC: Sending RESULT for initialize")
+
+                # --- PASO 5 (Respuesta a 'list_tools') ---
+                elif method_type == "mcp.tool.list_tools.invoke":
+                    print("[LOG] JSON-RPC: Handling 'mcp.tool.list_tools.invoke'.")
+                    response_payload = {"tools": TOOL_DEFINITIONS}
+
+                elif method_type == "mcp.tool.invoke":
+                    tool_id = body.get("params", {}).get("tool_id")
+                    params = body.get("params", {}).get("parameters", {})
+                    print(f"[LOG] JSON-RPC: Handling mcp.tool.invoke for {tool_id}")
+
+                    if tool_id == "get_schema":
+                        response_payload = await get_schema_tool()
+                    elif tool_id == "query_facilities":
+                        if not params.get("province") and not params.get("city") and not params.get("facility_type"):
+                            response_payload = {"code": -32001, "message": "Your filter is too broad..."}
+                            has_error = True
+                        else:
+                            response_payload = await query_facilities_tool(**params)
+                    else:
+                        response_payload = {"code": -32002, "message": f"Unknown tool_id: {tool_id}"}
+                        has_error = True
+
+                    if isinstance(response_payload, dict) and 'error' in response_payload and not has_error:
+                        response_payload = {"code": -32000, "message": response_payload['error']}
+                        has_error = True
+
+                # --- Lógica de Respuesta JSON-RPC ---
+                if has_error:
+                    print(f"[LOG] JSON-RPC: Sending ERROR response: {response_payload}")
+                    yield json.dumps({
+                        "jsonrpc": "2.0",
+                        "id": event_id,
+                        "error": response_payload
+                    })
+                else:
+                    print(f"[LOG] JSON-RPC: Sending RESULT response for method {method_type}")
                     yield json.dumps({
                         "jsonrpc": "2.0",
                         "id": event_id,
                         "result": response_payload
                     })
 
-                    # --- ¡EL PASO FALTANTE! Enviar la lista de herramientas proactivamente ---
-                    print("[LOG] JSON-RPC: Proactively sending tool list...")
-                    yield json.dumps({
-                        "event": "mcp.tool.list_tools.result",
-                        "data": {"tools": TOOL_DEFINITIONS}
-                    })
-                    print("[LOG] JSON-RPC: Tool list sent.")
-
-                # ... (resto de la lógica de invoke, etc.) ...
-
             # --- LÓGICA PARA MCP (tu prueba de curl) ---
             elif event_type:
-                # ... (esta lógica estaba bien y la dejamos para tus pruebas) ...
+                # ... (Tu código de prueba 'curl' sigue funcionando aquí) ...
                 response_event_name = None
                 if event_type == "mcp.tool.list_tools.invoke":
                     print("[LOG] MCP: Handling mcp.tool.list_tools.invoke")
@@ -108,8 +134,8 @@ async def mcp_event_generator(request: Request):
                 elif event_type == "mcp.tool.invoke":
                     tool_id = body.get("data", {}).get("tool_id")
                     params = body.get("data", {}).get("parameters", {})
-                    # ... (lógica de la herramienta) ...
-                    response_payload = {"tool_id": tool_id, "result": "..."}  # Simplicidad
+                    result_data = await query_facilities_tool(**params)  # Asumiendo prueba válida
+                    response_payload = {"tool_id": tool_id, "result": result_data}
                     response_event_name = "mcp.tool.invoke.result"
 
                 print(f"[LOG] MCP: Sending response event: {response_event_name}")
@@ -150,4 +176,4 @@ def root():
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.a.0.0", port=8000)
