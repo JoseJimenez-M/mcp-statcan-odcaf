@@ -11,7 +11,6 @@ from database import get_schema_tool, query_facilities_tool
 
 app = FastAPI()
 
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://chat.openai.com"],
@@ -52,12 +51,22 @@ async def mcp_event_generator(request: Request):
         "data": {"session_id": session_id}
     })
 
+    content_length = request.headers.get('content-length')
+
+    if content_length is None or content_length == '0':
+        print("Empty POST received. Connection established. Holding open.")
+        try:
+            while True:
+                await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            print("Client disconnected (empty connection).")
+        return
+
     try:
         body = await request.json()
 
         event_type = body.get("event")
         event_id = body.get("id", "mcp_event_1")
-
         response_data = None
         response_event = None
 
@@ -82,17 +91,10 @@ async def mcp_event_generator(request: Request):
             else:
                 result_data = {"error": f"Unknown tool_id: {tool_id}"}
 
-            response_data = {
-                "tool_id": tool_id,
-                "result": result_data
-            }
-
+            response_data = {"tool_id": tool_id, "result": result_data}
         else:
             response_event = "mcp.error"
-            response_data = {
-                "code": "unknown_event",
-                "message": f"Unknown event type: {event_type}"
-            }
+            response_data = {"code": "unknown_event", "message": f"Unknown event type: {event_type}"}
 
         yield json.dumps({
             "id": f"resp_for_{event_id}",
@@ -100,22 +102,14 @@ async def mcp_event_generator(request: Request):
             "data": response_data
         })
 
-    except json.JSONDecodeError:
-        print("Empty body received. Connection established. Awaiting events...")
-        pass
-
-    except asyncio.CancelledError:
-        print("Client disconnected.")
-        raise
-
     except Exception as e:
-        print(f"An error occurred in stream: {e}")
+        print(f"Error processing JSON body: {e}")
         yield json.dumps({
             "event": "mcp.error",
             "data": {"code": "internal_server_error", "message": str(e)}
         })
     finally:
-        print("MCP stream generator finished or holding open.")
+        print("JSON body processed. Closing stream.")
 
 
 @app.post("/sse")
