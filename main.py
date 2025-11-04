@@ -74,11 +74,12 @@ TOOL_DEFINITIONS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "id": {"type": "string", "description": "The exact name of the facility to fetch."}
+                "facility_id": {"type": "string", "description": "The exact name of the facility to fetch."}
             },
-            "required": ["id"]
+            "required": ["facility_id"]
         }
     }
+
 ]
 
 
@@ -131,7 +132,7 @@ async def sse_endpoint(request: Request):
             if tool_id == "search":
                 result = await search_tool(args.get("query", ""), args.get("limit", 5))
             elif tool_id == "fetch":
-                result = await fetch_tool(args.get("id", ""))
+                result = await fetch_tool(args.get("facility_id", ""))
             else:
                 result = {"error": f"Unknown tool {tool_id}"}
 
