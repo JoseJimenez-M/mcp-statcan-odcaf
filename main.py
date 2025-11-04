@@ -104,7 +104,7 @@ async def mcp_event_generator(request: Request):
 
                 # --- Manejar la solicitud 'list_tools' ---
                 elif method_type == "mcp.tool.list_tools.invoke" or method_type == "tools/list":
-                    print("[LOG] JSON-RPC: Handling 'mcp.tool.list_tools.invoke'.")
+                    print("[LOG] JSON-RPC: Handling 'mcp.tool.list_tools.invoke' (or 'tools/list').")
                     response_payload = {"tools": TOOL_DEFINITIONS}
                     print(f"[LOG] JSON-RPC: Sending RESULT for list_tools")
                     yield json.dumps({
