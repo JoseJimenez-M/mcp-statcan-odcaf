@@ -5,15 +5,12 @@ from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse, Response
 from sse_starlette.sse import EventSourceResponse
 
-# --- 1. Importar el Middleware de CORS ---
+# --- 1. Importar y configurar CORS ---
 from fastapi.middleware.cors import CORSMiddleware
-
 from database import get_schema_tool, query_facilities_tool
 
 app = FastAPI()
 
-# --- 2. Configurar CORS (Maneja OPTIONS) ---
-# Esto es requerido por el navegador de ChatGPT
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://chat.openai.com"],
@@ -46,46 +43,64 @@ TOOL_DEFINITIONS = [
 ]
 
 
-# --- 3. Lógica del Generador Mejorada (Maneja POST Vacío) ---
 async def mcp_event_generator(request: Request):
+    print("\n--- [LOG] NEW CONNECTION RECEIVED ---")
     session_id = "mcp_session_1"
 
-    # Enviar el evento de sesión creada
+    print("[LOG] Sending mcp.transport.session_created...")
     yield json.dumps({
         "event": "mcp.transport.session_created",
         "data": {"session_id": session_id}
     })
 
-    # Verificar si el cliente envió un cuerpo o si fue solo una conexión vacía
     content_length = request.headers.get('content-length')
+    print(f"[LOG] Content-Length header: {content_length}")
 
     if content_length is None or content_length == '0':
+        # --- ESTA ES LA PARTE NUEVA ---
         # Cuerpo vacío (la conexión inicial de ChatGPT).
-        # Mantener la conexión abierta.
-        print("Empty POST received. Connection established. Holding open.")
+        print("[LOG] Empty body detected. Assuming initial ChatGPT connection.")
+
+        # Enviar la lista de herramientas inmediatamente
+        print("[LOG] Sending mcp.tool.list_tools.result immediately...")
+        yield json.dumps({
+            "id": "auto_list_tools_on_connect",
+            "event": "mcp.tool.list_tools.result",
+            "data": {"tools": TOOL_DEFINITIONS}
+        })
+        print("[LOG] Tool list sent. Holding connection open.")
+
         try:
             while True:
-                # Mantener vivo mientras el cliente esté conectado
-                await asyncio.sleep(60)
+                await asyncio.sleep(60)  # Mantener la conexión viva
         except asyncio.CancelledError:
-            print("Client disconnected (empty connection).")
-        return  # Terminar el generador aquí
+            print("[LOG] Client (empty connection) disconnected.")
 
-    # Si SÍ hay un cuerpo (como tu prueba de curl), procesarlo.
+        print("--- [LOG] EMPTY CONNECTION CLOSED ---")
+        return
+
+    # --- Este bloque es para tus pruebas de 'curl' con cuerpo JSON ---
     try:
+        print("[LOG] Non-empty body detected. Parsing JSON...")
         body = await request.json()
+        print(f"[LOG] JSON Body parsed: {body}")
 
         event_type = body.get("event")
+        # ... (el resto del código para manejar get_schema, query_facilities, etc.) ...
+        # (El código completo de la respuesta 23 está aquí)
+
         event_id = body.get("id", "mcp_event_1")
         response_data = None
         response_event = None
 
         if event_type == "mcp.tool.list_tools.invoke":
+            print("[LOG] Handling mcp.tool.list_tools.invoke")
             response_event = "mcp.tool.list_tools.result"
             response_data = {"tools": TOOL_DEFINITIONS}
 
         elif event_type == "mcp.tool.invoke":
             tool_id = body.get("data", {}).get("tool_id")
+            print(f"[LOG] Handling mcp.tool.invoke for tool_id: {tool_id}")
             params = body.get("data", {}).get("parameters", {})
 
             response_event = "mcp.tool.invoke.result"
@@ -103,9 +118,11 @@ async def mcp_event_generator(request: Request):
 
             response_data = {"tool_id": tool_id, "result": result_data}
         else:
+            print(f"[LOG] Unknown event type: {event_type}")
             response_event = "mcp.error"
             response_data = {"code": "unknown_event", "message": f"Unknown event type: {event_type}"}
 
+        print(f"[LOG] Sending response event: {response_event}")
         yield json.dumps({
             "id": f"resp_for_{event_id}",
             "event": response_event,
@@ -113,19 +130,18 @@ async def mcp_event_generator(request: Request):
         })
 
     except Exception as e:
-        print(f"Error processing JSON body: {e}")
+        print(f"!!! [ERROR] Error processing JSON body: {e}")
         yield json.dumps({
             "event": "mcp.error",
             "data": {"code": "internal_server_error", "message": str(e)}
         })
     finally:
-        print("JSON body processed. Closing stream.")
+        print("--- [LOG] JSON BODY CONNECTION CLOSED ---")
 
 
 @app.post("/sse")
 async def sse_endpoint(request: Request):
-    return EventSourceResponse(mcp_event_generator(request),
-                               media_type="text/stream")  # Corregido a 'text/event-stream'
+    return EventSourceResponse(mcp_event_generator(request), media_type="text/event-stream")
 
 
 @app.get("/")
