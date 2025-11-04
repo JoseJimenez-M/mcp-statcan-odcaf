@@ -39,13 +39,17 @@ async def fetch_facility(body: FetchRequest):
 
 @app.get("/")
 async def root():
-    return {"message": "✅ Odcaf MCP API running"}
+    return {"message": " Odcaf MCP API running"}
 
 
 @app.get("/.well-known/ai-plugin.json")
 async def serve_manifest():
     from fastapi.responses import FileResponse
     return FileResponse(".well-known/ai-plugin.json", media_type="application/json")
+
+@app.get("/logo.png")
+async def serve_logo():
+    return FileResponse("logo.png", media_type="image/png")
 
 app.add_middleware(
     CORSMiddleware,

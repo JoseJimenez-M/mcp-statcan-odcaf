@@ -1,7 +1,7 @@
 {
   "schema_version": "v1",
   "name_for_human": "Cultural and Art Facilities App",
-  "name_for_model": "odcaf_mcp_v2",
+  "name_for_model": "odcaf_mcp_v3",
   "description_for_human": "Provides access to Canadian cultural and art facilities data from StatCan.",
   "description_for_model": "Access StatCan cultural and art facilities information using MCP tools.",
   "auth": {
@@ -11,7 +11,7 @@
     "type": "mcp",
     "url": "https://mcp-statcan-odcaf.onrender.com/sse"
   },
-  "logo_url": "https://mcp-statcan-odcaf.onrender.com/favicon.png",
+  "logo_url": "https://mcp-statcan-odcaf.onrender.com/logo.png",
   "contact_email": "jose331375@gmail.com",
-  "legal_info_url": "https://example.com/legal"
+  "legal_info_url": "https://github.com/josejimenez-m/mcp-statcan-odcaf"
 }
