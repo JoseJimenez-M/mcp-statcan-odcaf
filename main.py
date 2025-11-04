@@ -83,6 +83,10 @@ async def mcp_event_generator(request: Request):
                     print("[LOG] JSON-RPC: Handling 'initialize'.")
                     response_payload = {
                         "protocolVersion": "2025-03-26",
+                        "serverInfo": {
+                            "name": "Servidor ODCAF (Estadísticas Canadá)",
+                            "version": "1.0.0"
+                        },
                         "capabilities": {}
                     }
                     print(f"[LOG] JSON-RPC: Sending RESULT for initialize")
