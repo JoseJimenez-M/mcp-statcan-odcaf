@@ -70,13 +70,18 @@ async def sse_endpoint(request: Request):
             }
             response = {"jsonrpc": "2.0", "id": event_id, "result": result}
 
-        # 2️⃣ list tools
+        # 2️⃣ notifications/initialized (no response expected)
+        elif method == "notifications/initialized":
+            print("[LOG] Handling notifications/initialized (no response needed)")
+            response = {"jsonrpc": "2.0", "result": "ok"}
+
+        # 3️⃣ list tools
         elif method in ["mcp.tool.list_tools.invoke", "tools/list"]:
             print("[LOG] Handling list_tools")
             result = {"tools": TOOL_DEFINITIONS}
             response = {"jsonrpc": "2.0", "id": event_id, "result": result}
 
-        # 3️⃣ invoke tool
+        # 4️⃣ invoke tool
         elif method == "mcp.tool.invoke":
             print("[LOG] Handling tool invoke")
             params = body.get("params", {})
@@ -92,7 +97,7 @@ async def sse_endpoint(request: Request):
 
             response = {"jsonrpc": "2.0", "id": event_id, "result": result}
 
-        # 4️⃣ unknown method
+        # 5️⃣ unknown method
         else:
             print(f"[LOG] Unknown method: {method}")
             response = {
