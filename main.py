@@ -53,7 +53,7 @@ async def serve_logo():
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://chat.openai.com"],
+    allow_origins=["https://chat.openai.com", "https://chatgpt.com"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],

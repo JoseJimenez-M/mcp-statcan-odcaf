@@ -1,7 +1,7 @@
 {
   "schema_version": "v1",
   "name_for_human": "Cultural and Art Facilities App",
-  "name_for_model": "odcaf_mcp_v3",
+  "name_for_model": "odcaf_mcp_v4",
   "description_for_human": "Provides access to Canadian cultural and art facilities data from StatCan.",
   "description_for_model": "Access StatCan cultural and art facilities information using MCP tools.",
   "auth": {
