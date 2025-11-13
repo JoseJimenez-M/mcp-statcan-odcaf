@@ -15,6 +15,8 @@ from database import (
     fetch_facility_by_id,
 )
 
+PROTOCOL_VERSION = "2024-11-05"
+
 app = FastAPI(title="ODCAF MCP Server", version="1.0.0")
 
 app.add_middleware(
@@ -107,6 +109,7 @@ async def health() -> JSONResponse:
         "status": "ok",
         "server": {"name": "ODCAF MCP Server", "version": "1.0.0"},
         "tools": [tool["name"] for tool in tools],
+        "protocolVersion": PROTOCOL_VERSION,
     }
     return JSONResponse(info)
 
@@ -114,21 +117,29 @@ async def health() -> JSONResponse:
 @app.get("/sse")
 async def sse_endpoint(request: Request) -> EventSourceResponse:
     async def event_generator():
-        initialized_payload = {
+        payload = {
             "jsonrpc": "2.0",
             "method": "notifications/initialized",
             "params": {
-                "serverInfo": {"name": "ODCAF MCP Server", "version": "1.0.0"}
+                "protocolVersion": PROTOCOL_VERSION,
+                "serverInfo": {
+                    "name": "ODCAF MCP Server",
+                    "version": "1.0.0",
+                },
+                "capabilities": {"tools": {}},
             },
         }
         yield {
-            "event": "notifications/initialized",
-            "data": json.dumps(initialized_payload),
+            "event": "message",
+            "data": json.dumps(payload),
         }
-        while True:
-            if await request.is_disconnected():
-                break
-            await asyncio.sleep(15)
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            pass
 
     return EventSourceResponse(event_generator())
 
@@ -255,7 +266,7 @@ async def mcp_handler(request: Request) -> JSONResponse:
 
     if method == "initialize":
         result = {
-            "protocolVersion": "2024-11-01",
+            "protocolVersion": PROTOCOL_VERSION,
             "serverInfo": {"name": "ODCAF MCP Server", "version": "1.0.0"},
             "capabilities": {"tools": {}},
         }
@@ -310,7 +321,7 @@ async def mcp_handler(request: Request) -> JSONResponse:
         "jsonrpc": "2.0",
         "id": request_id,
         "error": {
-            "code": -32601,
+            "code": -32601",
             "message": f"Unknown method: {method}",
         },
     }
