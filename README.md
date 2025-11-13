@@ -1,36 +1,93 @@
-# MCP Server for Statistics Canada LODE Dataset (ODCAF)
+# ODCAF MCP Server  
+A Machine Control Protocol (MCP) server that exposes the **Official Canadian Cultural Facilities Dataset (ODCAF)** through a clean and consistent MCP interface. This server allows ChatGPT and other MCP-compatible clients to query cultural facilities across Canada using JSON-RPC over HTTP + Server-Sent Events (SSE).
 
-This is a 48-hour challenge submission for DEV FORTRESS.
+---
 
-This project implements a Model Context Protocol (MCP) server that allows ChatGPT to interface with a Statistics Canada LODE dataset.
+## Features
 
-## Live Server URL
+### Full MCP-Compatible API  
+Implements:
+- `initialize`
+- `tools/list`
+- `tools/call`
+- Real SSE endpoint (`GET /sse`) emitting `notifications/initialized`.
 
-The public, no-auth SSE endpoint is: 
-`https://mcp-statcan-odcaf.onrender.com/sse`
+### Tools Available  
+This server exposes the following tools:
 
-## Assigned Dataset
+#### **1. get_schema**
+Returns the full schema of the ODCAF `facilities` table.
 
-This server provides tools to query the following LODE dataset:
+#### **2. query_facilities**
+Query facilities by:
+- Province or territory  
+- City  
+- Facility type  
+- Limit  
 
-* **Dataset Name:** The Open Database of Cultural and Art Facilities (ODCAF)
-* **LODE Link:** `https://www.statcan.gc.ca/en/lode/databases/odcaf`
+#### **3. search**
+Keyword-based search across:
+- Facility name  
+- Facility type  
+- City  
+- Province  
 
-## Architecture and Implementation
+#### **4. fetch**
+Fetch the full record of a facility by its exact name.
 
-This server is built in Python using **FastAPI** to provide the required HTTP/SSE endpoint.
+---
 
-To ensure fast query performance and reliability, the source `ODCAF_v1.0.csv` file was pre-processed and ingested into a local **aiosqlite** database (`odcaf.db`). The server queries this asynchronous SQLite database to respond to tool invocations.
+## Dataset  
+The ODCAF dataset contains cultural facility metadata including:
+- Name, address, postal code
+- City, province/territory  
+- Facility type (normalized by ODCAF)  
+- Coordinates (latitude, longitude)  
+- Geographic identifiers (CSD, PRUID, etc.)  
 
-## Tools Exposed
+This server uses:
+- `ODCAF_v1.0.csv`  
+- Preprocessed into `odcaf.db` via SQLite  
 
-The server exposes the following tools via MCP:
+---
 
-* `get_schema`: Provides the schema of the database table, including column names and data types.
-* `query_facilities`: Allows querying for facilities with optional filters for `province`, `city`, and `facility_type`.
+## Project Structure
 
-## License and Attribution
+│ <br>
+├── main.py # MCP HTTP + SSE server <br>
+├── database.py # Async SQLite access layer <br>
+├── ingest.py # CSV → SQLite preprocessing <br>
+├── odcaf.db # Generated database <br>
+├── ODCAF_v1.0.csv # Raw input dataset <br>
+├── .well-known/ai-plugin.json <br>
+├── README.md <br>
+└── TESTING_GUIDE.md <br>
 
-This project respects the dataset's attribution requirements. The data is provided under the **Open Government Licence - Canada**.
 
-This server collects no PII, analytics, or tracking data.
+---
+
+## Running the Server
+
+### Local development
+```bash
+pip install -r requirements.txt
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+Production (Render / Cloud)
+
+Set your app to run:
+```bash
+uvicorn main:app --host 0.0.0.0 --port 10000
+```
+🛰 MCP Endpoint
+
+SSE endpoint: GET /sse
+
+JSON-RPC endpoint: POST / or POST /sse
+
+All tool calls follow MCP's tools/call specification.
+
+### License
+
+This project wraps publicly available ODCAF data.
+You are free to modify or extend this MCP server for research or production use.
