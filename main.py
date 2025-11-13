@@ -102,6 +102,16 @@ def get_tools() -> List[Dict[str, Any]]:
     ]
 
 
+@app.get("/")
+async def root() -> JSONResponse:
+    data = {
+        "message": "ODCAF MCP Server is running.",
+        "server": {"name": "ODCAF MCP Server", "version": "1.0.0"},
+        "protocolVersion": PROTOCOL_VERSION,
+    }
+    return JSONResponse(data)
+
+
 @app.get("/health")
 async def health() -> JSONResponse:
     tools = get_tools()
@@ -247,9 +257,9 @@ async def mcp_handler(request: Request) -> JSONResponse:
                 "message": "Invalid JSON in request body.",
             },
         }
-        return JSONResponse(error, status_code=400)
+        return JSONResponse(error)
 
-    jsonrpc_version = body.get("jsonrpc")
+    jsonrpc_version = body.get("jsonrpc") or "2.0"
     method = body.get("method")
     request_id = body.get("id")
 
@@ -262,7 +272,7 @@ async def mcp_handler(request: Request) -> JSONResponse:
                 "message": "Invalid JSON-RPC version.",
             },
         }
-        return JSONResponse(error, status_code=400)
+        return JSONResponse(error)
 
     if method == "initialize":
         result = {
@@ -302,7 +312,7 @@ async def mcp_handler(request: Request) -> JSONResponse:
                         "message": f"Unknown tool: {name}",
                     },
                 }
-                return JSONResponse(error, status_code=400)
+                return JSONResponse(error)
 
             response = {"jsonrpc": "2.0", "id": request_id, "result": result}
             return JSONResponse(response)
@@ -315,7 +325,7 @@ async def mcp_handler(request: Request) -> JSONResponse:
                     "message": str(exc),
                 },
             }
-            return JSONResponse(error, status_code=500)
+            return JSONResponse(error)
 
     error = {
         "jsonrpc": "2.0",
@@ -325,7 +335,7 @@ async def mcp_handler(request: Request) -> JSONResponse:
             "message": f"Unknown method: {method}",
         },
     }
-    return JSONResponse(error, status_code=400)
+    return JSONResponse(error)
 
 
 if __name__ == "__main__":
