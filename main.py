@@ -321,7 +321,7 @@ async def mcp_handler(request: Request) -> JSONResponse:
         "jsonrpc": "2.0",
         "id": request_id,
         "error": {
-            "code": -32601",
+            "code": -32601,
             "message": f"Unknown method: {method}",
         },
     }
