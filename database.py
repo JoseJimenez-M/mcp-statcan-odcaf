@@ -119,25 +119,36 @@ async def query_facilities(
 ) -> List[Dict[str, Any]]:
     conn = await get_db_connection()
     cursor = await conn.cursor()
+
     sql = "SELECT * FROM facilities WHERE 1=1"
     params = []
 
     if province:
+        norm_prov = normalize_text(province)
         sql += " AND LOWER(prov_terr) LIKE ?"
-        params.append(f"%{normalize_text(province)}%")
+        params.append(f"%{norm_prov}%")
 
     if city:
+        norm_city = normalize_text(city)
         sql += " AND LOWER(REPLACE(REPLACE(REPLACE(city, '-', ' '), '.', ' '), '''', ' ')) LIKE ?"
-        params.append(f"%{normalize_text(city)}%")
+        params.append(f"%{norm_city}%")
 
-    await cursor.execute(sql)
+    sql += " LIMIT ?"
+    params.append(limit * 5)
+
+    await cursor.execute(sql, tuple(params))
     rows = await cursor.fetchall()
-    filtered = []
-    for row in rows:
-        if facility_type_matches(facility_type, row["odcaf_facility_type"]):
-            filtered.append(dict(row))
-            if len(filtered) >= limit:
-                break
-
     await conn.close()
-    return filtered
+
+    results = []
+    for row in rows:
+        if facility_type is None:
+            results.append(dict(row))
+        else:
+            if facility_type_matches(facility_type, row["odcaf_facility_type"]):
+                results.append(dict(row))
+        if len(results) >= limit:
+            break
+
+    return results
+
