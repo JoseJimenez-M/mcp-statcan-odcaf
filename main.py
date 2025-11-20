@@ -13,6 +13,8 @@ from database import (
     query_facilities,
     search_facilities,
     fetch_facility_by_id,
+    list_cities, 
+    list_facility_types
 )
 
 PROTOCOL_VERSION = "2024-11-05"

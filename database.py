@@ -65,19 +65,34 @@ async def search_facilities(query_text: str, limit: int = 20) -> List[Dict[str, 
     conn = await get_db_connection()
     cursor = await conn.cursor()
     norm = normalize_text(query_text)
-    sql = """
+    tokens = norm.split()
+
+    base_sql = """
         SELECT *
         FROM facilities
-        WHERE LOWER(REPLACE(REPLACE(REPLACE(city, '-', ' '), '.', ' '), '''', ' ')) LIKE ?
-           OR LOWER(REPLACE(REPLACE(REPLACE(facility_name, '-', ' '), '.', ' '), '''', ' ')) LIKE ?
-           OR LOWER(REPLACE(REPLACE(REPLACE(odcaf_facility_type, '-', ' '), '.', ' '), '''', ' ')) LIKE ?
-        LIMIT ?
+        WHERE 1=1
     """
-    like = f"%{norm}%"
-    await cursor.execute(sql, (like, like, like, limit))
+
+    params = []
+    for token in tokens:
+        like = f"%{token}%"
+        base_sql += """
+            AND (
+                LOWER(REPLACE(REPLACE(REPLACE(city, '-', ' '), '.', ' '), '''', ' ')) LIKE ?
+                OR LOWER(REPLACE(REPLACE(REPLACE(facility_name, '-', ' '), '.', ' '), '''', ' ')) LIKE ?
+                OR LOWER(REPLACE(REPLACE(REPLACE(odcaf_facility_type, '-', ' '), '.', ' '), '''', ' ')) LIKE ?
+            )
+        """
+        params.extend([like, like, like])
+
+    base_sql += " LIMIT ?"
+    params.append(limit)
+
+    await cursor.execute(base_sql, tuple(params))
     rows = await cursor.fetchall()
     await conn.close()
     return [dict(row) for row in rows]
+
 
 async def fetch_facility_by_id(facility_id: str) -> Optional[Dict[str, Any]]:
     conn = await get_db_connection()
