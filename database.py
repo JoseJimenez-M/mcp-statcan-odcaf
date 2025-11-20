@@ -144,6 +144,46 @@ async def query_facilities(
     facility_type: Optional[str] = None,
     limit: int = 20
 ) -> List[Dict[str, Any]]:
+    MUSEUM_ALIASES = [
+        "museum",
+        "gallery",
+        "art or cultural centre",
+        "heritage or historic site",
+        "library or archives",
+        "miscellaneous"
+    ]
+
+    PROVINCE_MAP = {
+        "british columbia": "bc",
+        "bc": "bc",
+        "ontario": "on",
+        "on": "on",
+        "quebec": "qc",
+        "québec": "qc",
+        "qc": "qc",
+        "alberta": "ab",
+        "ab": "ab",
+        "manitoba": "mb",
+        "mb": "mb",
+        "saskatchewan": "sk",
+        "sk": "sk",
+        "nova scotia": "ns",
+        "ns": "ns",
+        "new brunswick": "nb",
+        "nb": "nb",
+        "newfoundland": "nl",
+        "nl": "nl",
+        "prince edward island": "pe",
+        "pei": "pe",
+        "pe": "pe",
+        "yukon": "yt",
+        "yt": "yt",
+        "nunavut": "nu",
+        "nu": "nu",
+        "northwest territories": "nt",
+        "nt": "nt"
+    }
+
     conn = await get_db_connection()
     c = await conn.cursor()
 
@@ -159,17 +199,25 @@ async def query_facilities(
     if city:
         norm_city = normalize_text(city)
         sql += """
-            AND LOWER(
-                REPLACE(
-                    REPLACE(
-                        REPLACE(City, '-', ' '),
-                        '.', ' '
-                    ),
-                    '''', ' '
-                )
-            ) LIKE ?
+            AND (
+                LOWER(REPLACE(REPLACE(REPLACE(City, '-', ' '), '.', ' '), '''', ' ')) LIKE ?
+                OR LOWER(REPLACE(REPLACE(REPLACE(CSD_Name, '-', ' '), '.', ' '), '''', ' ')) LIKE ?
+                OR LOWER(REPLACE(REPLACE(REPLACE(Provider, '-', ' '), '.', ' '), '''', ' ')) LIKE ?
+            )
         """
-        params.append(f"%{norm_city}%")
+        like_city = f"%{norm_city}%"
+        params.extend([like_city, like_city, like_city])
+
+    if facility_type:
+        norm_type = normalize_text(facility_type)
+        if norm_type == "museum":
+            alias_norm = [normalize_text(x) for x in MUSEUM_ALIASES]
+            placeholders = ",".join(["?"] * len(alias_norm))
+            sql += f" AND LOWER(ODCAF_Facility_Type) IN ({placeholders})"
+            params.extend(alias_norm)
+        else:
+            sql += " AND LOWER(ODCAF_Facility_Type) LIKE ?"
+            params.append(f"%{norm_type}%")
 
     sql += " LIMIT ?"
     params.append(limit * 10)
@@ -180,12 +228,9 @@ async def query_facilities(
 
     results = []
     for row in rows:
-        if facility_type is None:
-            results.append(dict(row))
-        else:
-            if facility_type_matches(facility_type, row["ODCAF_Facility_Type"]):
-                results.append(dict(row))
+        results.append(dict(row))
         if len(results) >= limit:
             break
 
     return results
+
