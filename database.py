@@ -186,8 +186,13 @@ async def query_facilities(
 
     if city:
         nc = normalize_text(city)
-        if nc == "montreal" and province is None:
+        orig = nc
+
+        city = nc[:4]
+
+        if orig == "montreal" and province is None:
             province = "Quebec"
+
 
     conn = await get_db_connection()
     c = await conn.cursor()
