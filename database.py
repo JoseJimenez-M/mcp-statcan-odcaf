@@ -117,24 +117,72 @@ async def query_facilities(
     facility_type: Optional[str] = None,
     limit: int = 20
 ) -> List[Dict[str, Any]]:
+    prov_map = {
+        "british columbia": "bc",
+        "bc": "bc",
+        "ontario": "on",
+        "on": "on",
+        "quebec": "qc",
+        "québec": "qc",
+        "qc": "qc",
+        "alberta": "ab",
+        "ab": "ab",
+        "manitoba": "mb",
+        "mb": "mb",
+        "saskatchewan": "sk",
+        "sk": "sk",
+        "nova scotia": "ns",
+        "ns": "ns",
+        "new brunswick": "nb",
+        "nb": "nb",
+        "newfoundland": "nl",
+        "nl": "nl",
+        "prince edward island": "pe",
+        "pei": "pe",
+        "pe": "pe",
+        "yukon": "yt",
+        "yt": "yt",
+        "nunavut": "nu",
+        "nu": "nu",
+        "northwest territories": "nt",
+        "nt": "nt"
+    }
+
+    norm_prov = None
+    if province:
+        p = normalize_text(province)
+        norm_prov = prov_map.get(p, p)
+
+    norm_city = None
+    if city:
+        norm_city = normalize_text(city)
+
     conn = await get_db_connection()
     cursor = await conn.cursor()
 
     sql = "SELECT * FROM facilities WHERE 1=1"
     params = []
 
-    if province:
-        norm_prov = normalize_text(province)
-        sql += " AND LOWER(prov_terr) LIKE ?"
-        params.append(f"%{norm_prov}%")
+    if norm_prov:
+        sql += " AND LOWER(prov_terr) = ?"
+        params.append(norm_prov)
 
-    if city:
-        norm_city = normalize_text(city)
-        sql += " AND LOWER(REPLACE(REPLACE(REPLACE(city, '-', ' '), '.', ' '), '''', ' ')) LIKE ?"
+    if norm_city:
+        sql += """
+            AND LOWER(
+                REPLACE(
+                    REPLACE(
+                        REPLACE(city, '-', ' '),
+                        '.', ' '
+                    ),
+                    '''', ' '
+                )
+            ) LIKE ?
+        """
         params.append(f"%{norm_city}%")
 
     sql += " LIMIT ?"
-    params.append(limit * 5)
+    params.append(limit * 10)
 
     await cursor.execute(sql, tuple(params))
     rows = await cursor.fetchall()
