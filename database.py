@@ -184,6 +184,11 @@ async def query_facilities(
         "nt": "nt"
     }
 
+    if city:
+        nc = normalize_text(city)
+        if nc == "montreal" and province is None:
+            province = "Quebec"
+
     conn = await get_db_connection()
     c = await conn.cursor()
 
@@ -198,6 +203,7 @@ async def query_facilities(
 
     if city:
         norm_city = normalize_text(city)
+        like_city = f"%{norm_city}%"
         sql += """
             AND (
                 LOWER(REPLACE(REPLACE(REPLACE(City, '-', ' '), '.', ' '), '''', ' ')) LIKE ?
@@ -205,7 +211,6 @@ async def query_facilities(
                 OR LOWER(REPLACE(REPLACE(REPLACE(Provider, '-', ' '), '.', ' '), '''', ' ')) LIKE ?
             )
         """
-        like_city = f"%{norm_city}%"
         params.extend([like_city, like_city, like_city])
 
     if facility_type:
@@ -219,8 +224,9 @@ async def query_facilities(
             sql += " AND LOWER(ODCAF_Facility_Type) LIKE ?"
             params.append(f"%{norm_type}%")
 
+    prelimit = 5000 if facility_type else 1000
     sql += " LIMIT ?"
-    params.append(limit * 10)
+    params.append(prelimit)
 
     await c.execute(sql, tuple(params))
     rows = await c.fetchall()
@@ -233,4 +239,5 @@ async def query_facilities(
             break
 
     return results
+
 
