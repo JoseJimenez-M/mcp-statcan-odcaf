@@ -33,73 +33,55 @@ def get_tools() -> List[Dict[str, Any]]:
         {
             "name": "get_schema",
             "description": "Get the database schema for the ODCAF facilities table.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {},
-                "required": [],
-            },
+            "inputSchema": {"type": "object", "properties": {}, "required": []},
         },
         {
             "name": "query_facilities",
-            "description": "Query facilities by optional province, city, and facility type.",
+            "description": "Query facilities by optional province, city, and facility type with fuzzy matching.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "province": {
-                        "type": "string",
-                        "description": "Province or territory name or code.",
-                    },
-                    "city": {
-                        "type": "string",
-                        "description": "City name.",
-                    },
-                    "facility_type": {
-                        "type": "string",
-                        "description": "Facility type, for example museum or gallery.",
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Maximum number of results to return.",
-                        "default": 5,
-                    },
+                    "province": {"type": "string"},
+                    "city": {"type": "string"},
+                    "facility_type": {"type": "string"},
+                    "limit": {"type": "integer", "default": 20}
                 },
                 "required": [],
             },
         },
         {
             "name": "search",
-            "description": "Search facilities by keyword across name, type, city, and province.",
+            "description": "Keyword search across facility name, type, city, and province using fuzzy matching.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Search term to match name, type, city, or province.",
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Maximum number of results to return.",
-                        "default": 5,
-                    },
+                    "query": {"type": "string"},
+                    "limit": {"type": "integer", "default": 20},
                 },
                 "required": ["query"],
             },
         },
         {
             "name": "fetch",
-            "description": "Fetch a single facility by its exact name.",
+            "description": "Fetch a single facility by its exact name (fuzzy-normalized).",
             "inputSchema": {
                 "type": "object",
-                "properties": {
-                    "facility_id": {
-                        "type": "string",
-                        "description": "Exact facility name to look up.",
-                    }
-                },
+                "properties": {"facility_id": {"type": "string"}},
                 "required": ["facility_id"],
             },
         },
+        {
+            "name": "list_cities",
+            "description": "List all unique city names available in the ODCAF dataset.",
+            "inputSchema": {"type": "object", "properties": {}, "required": []},
+        },
+        {
+            "name": "list_facility_types",
+            "description": "List all unique facility types in the ODCAF dataset.",
+            "inputSchema": {"type": "object", "properties": {}, "required": []},
+        }
     ]
+
 
 
 @app.get("/")
@@ -303,6 +285,10 @@ async def mcp_handler(request: Request) -> JSONResponse:
                 result = await handle_search(arguments)
             elif name == "fetch":
                 result = await handle_fetch(arguments)
+            elif name == "list_cities":
+                result = await handle_list_cities()
+            elif name == "list_facility_types":
+                result = await handle_list_facility_types()
             else:
                 error = {
                     "jsonrpc": "2.0",
@@ -336,6 +322,28 @@ async def mcp_handler(request: Request) -> JSONResponse:
         },
     }
     return JSONResponse(error)
+
+async def handle_list_cities() -> Dict[str, Any]:
+    cities = await list_cities()
+    return {
+        "content": [
+            {
+                "type": "text",
+                "text": json.dumps({"cities": cities}, indent=2)
+            }
+        ]
+    }
+
+async def handle_list_facility_types() -> Dict[str, Any]:
+    types = await list_facility_types()
+    return {
+        "content": [
+            {
+                "type": "text",
+                "text": json.dumps({"facility_types": types}, indent=2)
+            }
+        ]
+    }
 
 
 if __name__ == "__main__":
