@@ -51,21 +51,6 @@ This server uses:
 
 ---
 
-## Project Structure
-
-│ <br>
-├── main.py # MCP HTTP + SSE server <br>
-├── database.py # Async SQLite access layer <br>
-├── ingest.py # CSV → SQLite preprocessing <br>
-├── odcaf.db # Generated database <br>
-├── ODCAF_v1.0.csv # Raw input dataset <br>
-├── .well-known/ai-plugin.json <br>
-├── README.md <br>
-└── TESTING_GUIDE.md <br>
-
-
----
-
 ## Running the Server
 
 ### Local development
