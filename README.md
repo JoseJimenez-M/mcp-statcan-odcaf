@@ -1,6 +1,8 @@
 # ODCAF MCP Server  
 A Machine Control Protocol (MCP) server that exposes the **Official Canadian Cultural Facilities Dataset (ODCAF)** through a clean and consistent MCP interface. This server allows ChatGPT and other MCP-compatible clients to query cultural facilities across Canada using JSON-RPC over HTTP + Server-Sent Events (SSE).
 
+DEMO: https://youtu.be/DNTvEinVrUA
+
 ---
 
 ## Features
